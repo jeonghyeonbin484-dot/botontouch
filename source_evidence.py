@@ -11,6 +11,7 @@ def analysis(refs):
  calendar=[];groups={}
  for key,ref in refs.items():
   for line in ref['text'].splitlines():
+   if re.match(r'\s*(내보낸 시각|생성 시각|검토 상태|저장된 내용 기준)\s*[:：]',line):continue
    dates=re.findall(r'(20\d{2})[-./](\d{1,2})[-./](\d{1,2})',line)
    months={int(m) for m in re.findall(r'(?<!\d)(1[0-2]|[1-9])월',line)}|{int(m) for _,m,_ in dates}
    for month in sorted(months):calendar.append({'month':month,'text':line,'source_ids':[key],'method':'규칙 기반 원문 추출 · AI 의미 분석 아님'})
