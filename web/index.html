@@ -32,7 +32,7 @@
 
 .optional-shared-sources{margin:16px 0}.optional-ai-tool .question-layout{grid-template-columns:minmax(0,1fr)}
 </style></head>
-<body><div style="padding:10px;background:#fff3cd;color:#513c00;text-align:center;font-size:14px">공개 테스트 사이트 · 모든 직원은 가상 인물입니다. 실제 개인정보·업무자료를 입력하거나 업로드하지 마세요. AI는 모의 응답만 제공합니다.</div>
+<body style="visibility:hidden"><div style="padding:10px;background:#fff3cd;color:#513c00;text-align:center;font-size:14px">공개 테스트 사이트 · 모든 직원은 가상 인물입니다. 실제 개인정보·업무자료를 입력하거나 업로드하지 마세요. AI는 모의 응답만 제공합니다.</div>
 <a class="skip-link" href="#main">본문으로 건너뛰기</a>
 <aside class="sidebar" id="sidebar">
   <a href="#home" class="brand" aria-label="바통터치 메인 화면"><span class="brand-symbol" aria-hidden="true"><i></i><i></i></span><span>바통터치<small>업무의 다음 시작을 함께</small></span></a>
@@ -308,7 +308,7 @@ $('backup-download').onclick=()=>{if(guard('backup-message'))downloadPath('/api/
 $('backup-restore').onclick=()=>{if(guard('backup-message')){$('backup-file').value='';$('backup-file').click();}};
 $('backup-file').onchange=async()=>{const file=$('backup-file').files[0];if(!file||!guard('backup-message'))return;if(file.size>25*1024*1024){message('backup-message','백업은 25MB 이하 파일을 선택해 주세요.','error');return;}try{const bundle=JSON.parse(await file.text());if(!await confirmAction('백업을 새 업무 묶음으로 복원할까요?','기존 데이터는 유지되고 복원된 데이터는 별도 묶음으로 추가됩니다. 백업의 출처·문서 내용을 직접 확인하세요.','새 묶음 복원'))return;setBusy('restore',true);const result=await post('/api/backup/restore',bundle);state.workspaces=await api('/api/workspaces');setBusy('restore',false);await switchWorkspace(result.workspace_id);message('backup-message','새 묶음으로 복원했습니다. 원문과 출처를 확인해 주세요.');}catch(error){message('backup-message',error.message,'error');}finally{setBusy('restore',false);}};
 window.addEventListener('beforeunload',event=>{if(reviewNotes.size||$('followup-question').value.trim()){event.preventDefault();event.returnValue='';}});
-async function boot(){try{account=await api('/api/auth/status');if(!account.user){location.replace('/login');return;}if(account.user.must_change_password){location.replace('/login#password');return;}await initialize();}catch(error){message('global-message',error.message,'error');}}
+async function boot(){try{account=await api('/api/auth/status');if(!account.user){location.replace('/login');return;}if(account.user.must_change_password){location.replace('/login#password');return;}await initialize();document.body.style.visibility='';}catch(error){location.replace('/login?reason=expired');}}
 boot();
 
 /* Staff-addressed requests. This module never triggers Gemini or background org sync. */

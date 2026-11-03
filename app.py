@@ -163,7 +163,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        if self.path.split('?')[0] in ('/','/login'):
+        if not self.path.split('?')[0].startswith('/api/'):
             page='login.html' if self.path.split('?')[0]=='/login' else 'index.html'
             if page=='index.html':
                 try:

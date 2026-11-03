@@ -47,6 +47,10 @@ def ensure(db):
 
 def enabled(db):return bool(db.execute('SELECT 1 FROM users LIMIT 1').fetchone())
 def digest(value):return hashlib.sha256(value.encode()).hexdigest()
+
+# Domain separation retires every pre-fix session without deleting users or history.
+# Old cookie tokens can never authenticate against the new session digest.
+def session_digest(token):return digest('batontouch-interactive-session-v2:'+token)
 def audit(db,handler,action,user_id=None,details=''):
     actor=getattr(handler,'user',None)
     db.execute('INSERT INTO auth_audit(user_id,actor_id,action,ip,details) VALUES(?,?,?,?,?)',(user_id,actor['id'] if actor else None,action,handler.client_address[0],details))
@@ -66,7 +70,7 @@ def identity(handler,db):
         cookies=SimpleCookie(handler.headers.get('Cookie',''));token=cookies['baton_session'].value if 'baton_session' in cookies else ''
     except Exception:token=''
     if token:
-        row=db.execute('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.active=1',(digest(token),time.time())).fetchone()
+        row=db.execute('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.active=1',(session_digest(token),time.time())).fetchone()
         if row and (not row['is_test'] or server_settings.dev_test_accounts()) and (not row['initial_shared'] or __import__('staff_account_sync').enabled(db)):
             candidate=profile(db,row);staff=candidate['employee']
             if not staff or staff['active'] and staff['department_active'] and staff['employment_status']=='active' and (not staff['saeoll_id'] or staff['saeoll_id']==row['username']) and (staff['source']!='test' or server_settings.dev_test_accounts()):handler.user=candidate
@@ -109,12 +113,12 @@ def validate_username(username):
 
 def json_cookie(handler,value,token=None):
     raw=json.dumps(value,ensure_ascii=False).encode();handler.send_response(200);handler.send_header('Content-Type','application/json; charset=utf-8');handler.send_header('Content-Length',str(len(raw)));handler.send_header('Cache-Control','no-store');handler.send_header('X-Content-Type-Options','nosniff')
-    if token is not None:handler.send_header('Set-Cookie','baton_session='+token+'; HttpOnly; SameSite=Strict; Path=/; Max-Age='+('28800' if token else '0')+('; Secure' if server_settings.secure_cookie() else ''))
+    if token is not None:handler.send_header('Set-Cookie','baton_session='+token+'; HttpOnly; SameSite=Strict; Path=/'+('' if token else '; Max-Age=0')+('; Secure' if server_settings.secure_cookie() else ''))
     handler.end_headers();handler.wfile.write(raw)
 
 
 def new_session(db,user_id):
-    token=secrets.token_urlsafe(32);db.execute('DELETE FROM sessions WHERE expires<?',(time.time(),));db.execute('INSERT INTO sessions VALUES(?,?,?)',(digest(token),user_id,time.time()+28800));return token
+    token=secrets.token_urlsafe(32);db.execute('DELETE FROM sessions WHERE expires<?',(time.time(),));db.execute('INSERT INTO sessions VALUES(?,?,?)',(session_digest(token),user_id,time.time()+28800));return token
 
 
 def limits(handler,username,prefix='login'):
@@ -177,7 +181,7 @@ def handle(handler,factory,method):
             except AccessError:
                 user=getattr(handler,'user',None)
             if path=='/api/auth/status' and method=='GET':
-                json_cookie(handler,{'enabled':enabled(db),'setup_required':not enabled(db),'auth_required':True,'user':user,'test_accounts_enabled':server_settings.dev_test_accounts(),'bootstrap_token_required':server_settings.central(),'personal_initial_password':__import__('staff_account_sync').enabled(db)});return True
+                json_cookie(handler,{'enabled':enabled(db),'setup_required':not enabled(db),'auth_required':True,'session_policy':'interactive-v2','user':user,'test_accounts_enabled':server_settings.dev_test_accounts(),'bootstrap_token_required':server_settings.central(),'personal_initial_password':__import__('staff_account_sync').enabled(db)});return True
             if path=='/api/auth/reset-request' and method=='POST':
                 body=read_json(handler);name=validate_username(body.get('username'));key='reset:'+digest(handler.client_address[0]+':'+name);row=db.execute('SELECT * FROM login_failures WHERE identity=?',(key,)).fetchone()
                 if row and row['blocked_until']>time.time():raise AccessError(429,'초기화 요청이 많습니다. 잠시 후 다시 요청하세요.')
@@ -218,7 +222,7 @@ def handle(handler,factory,method):
             if path=='/api/auth/logout' and method=='POST':
                 try:cookie=SimpleCookie(handler.headers.get('Cookie',''));token=cookie['baton_session'].value if 'baton_session' in cookie else ''
                 except Exception:token=''
-                db.execute('DELETE FROM sessions WHERE token_hash=?',(digest(token),));audit(db,handler,'로그아웃',user['id'] if user else None);db.commit();json_cookie(handler,{'logged_out':True},'');return True
+                db.execute('DELETE FROM sessions WHERE token_hash=?',(session_digest(token),));audit(db,handler,'로그아웃',user['id'] if user else None);db.commit();json_cookie(handler,{'logged_out':True},'');return True
             if not user:raise AccessError(401,'로그인이 필요합니다.')
             if path=='/api/auth/password' and method=='POST':
                 body=read_json(handler);current=body.get('current_password');new=body.get('new_password');passwords.validate(new)
