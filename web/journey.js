@@ -41,3 +41,7 @@ function foldDemoTool(selector,id,label){const item=document.querySelector(selec
 foldDemoTool('.suggestions-panel','expected-questions-panel','1. 모의 예상질문 만들기');
 foldDemoTool('.question-layout','source-answer-panel','2. 자료에 질문하기 · 모의 AI 응답');
 $('header-logout').onclick=async()=>{if(state.busy.size||!guard('global-message'))return;const control=$('header-logout');control.disabled=true;try{await post('/api/auth/logout',{});location.replace('/login?reason=logout');}catch(error){message('global-message',error.message,'error');}finally{control.disabled=false;}};
+
+// Both optional tools use the same source picker; keep it visible without opening a different tool.
+const demoSharedSources=document.querySelector('#source-answer-panel .selection-panel');
+if(demoSharedSources){demoSharedSources.classList.add('optional-shared-sources');demoSharedSources.querySelector('h2').textContent='공통 가상 자료 선택';document.getElementById('expected-questions-panel').before(demoSharedSources);}
