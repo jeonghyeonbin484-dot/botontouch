@@ -66,7 +66,7 @@ class CloudTests(unittest.TestCase):
   self.assertGreater(self.f.memory.commits,1)
   self.f.call('/api/auth/logout',{},a);self.reject('/api/documents',client=a,status=401)
  def test_fictional_roster_only_and_no_internal_sync(self):
-  a=self.f.login('demo.a');depts=self.f.call('/api/directory/departments',client=a);self.assertEqual(len(depts),3)
+  a=self.f.login('demo.a');depts=self.f.call('/api/directory/departments',client=a);self.assertEqual(len(depts),5)
   staff=self.f.call('/api/directory/employees?department_id=DEMO-RECEIVE',client=a);self.assertEqual(staff['total'],2)
   self.assertTrue(all(e['employee_id'].startswith('DEMO-') for e in staff['items']))
   self.reject('/api/directory/sync',{'employees':True},a)

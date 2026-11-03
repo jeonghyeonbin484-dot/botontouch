@@ -32,6 +32,24 @@ def seed():
   db.commit()
 
 
+def demo_search_fixtures():
+ """Add fictional test staff without editing existing departments/users/documents."""
+ import app,auth_control
+ with closing(app.connect()) as db:
+  if db.execute("SELECT 1 FROM org_employees WHERE employee_id='DEMO-GLOBAL'").fetchone():return
+  for code,name in [('DEMO-AI','AI전략팀 (가상)'),('DEMO-BIGDATA','빅데이터팀 (가상)')]:
+   db.execute("INSERT OR IGNORE INTO org_departments(id,name,source) VALUES(?,?,'demo')",(code,name))
+  for identifier,name,dept,login,position in [('DEMO-GLOBAL','가상 빅데이터 직원','DEMO-BIGDATA','demo.global','가상 주무관'),('DEMO-SAME-A','가상 동명이인','DEMO-AI','demo.same.a','가상 팀장'),('DEMO-SAME-B','가상 동명이인','DEMO-BIGDATA','demo.same.b','가상 주무관')]:
+   db.execute("INSERT OR IGNORE INTO org_employees(employee_id,name,department_id,position,saeoll_id,source) VALUES(?,?,?,?,?,'demo')",(identifier,name,dept,position,login))
+  # This additional fictional login intentionally starts without a staff link.
+  # It is issued explicitly by the demo fixture, not by an organization lookup.
+  if not db.execute("SELECT 1 FROM users WHERE username='demo.global'").fetchone():
+   password=os.environ.get('BATON_DEMO_PASSWORD','')
+   if len(password)<16:raise StorageUnavailable('테스트 계정 비밀번호 설정을 확인하세요.')
+   db.execute("INSERT INTO users(username,password_hash,salt,role,active,must_change_password,is_test) VALUES(?,?,'','member',1,0,0)",('demo.global',auth_control.password_hash(password)))
+  db.commit()
+
+
 @contextmanager
 def database_request():
  """Never fall back to nonpersistent SQLite when shared storage is missing."""
@@ -54,6 +72,7 @@ def database_request():
    token=cloud_context.current_data.set(root)
    try:
     if not before:seed()
+    demo_search_fixtures()
     yield
     after=file.read_bytes()
     if len(after)>MAX_DATABASE_BYTES:raise StorageUnavailable('공개 테스트의 합계 저장 한도(20MB)를 초과했습니다. 입력은 화면에 유지됩니다.')

@@ -205,6 +205,7 @@ def handle(handler,factory,method):
                     keys=limits(handler,name);check_limits(db,keys);valid=verify_limited(password,row)
                     if not valid or not row['active'] or row['is_test'] and not server_settings.dev_test_accounts() or row['initial_shared'] and not __import__('staff_account_sync').enabled(db):
                         record_failure(db,keys);audit(db,handler,'로그인 실패',row['id'] if row else None);db.commit();raise AccessError(401,'아이디 또는 비밀번호가 올바르지 않거나 비활성 계정입니다.')
+                    __import__('employee_identity').ensure_mapping(db,dict(row))
                     data=profile(db,row);staff=data['employee']
                     if staff and (not staff['active'] or not staff['department_active'] or staff['employment_status']!='active' or staff['saeoll_id'] and staff['saeoll_id']!=name or staff['source']=='test' and not server_settings.dev_test_accounts()):
                         audit(db,handler,'직원 매핑·재직 확인 실패',row['id']);db.commit();raise AccessError(403,'조직도 계정 연결 또는 재직 상태를 관리자에게 확인하세요.')

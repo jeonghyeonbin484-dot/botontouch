@@ -103,13 +103,9 @@ def employee(db, employee_id):
     return dict(row)
 
 
-def linked_employee(db, user):
-    row = db.execute('SELECT employee_id FROM employee_accounts WHERE user_id=?', (user['id'],)).fetchone()
-    if not row:
-        fail(409, '관리자가 로그인 계정과 조직도 USER_ID를 먼저 연결해야 합니다.')
-    staff=employee(db,row['employee_id'])
-    if not staff['saeoll_id'] or staff['saeoll_id']!=user['username']:fail(409,'기존 계정의 공식 SAEOLL_ID를 관리자가 확인·반영한 뒤 요청을 처리하세요.')
-    return staff
+def linked_employee(db, user, verify_live=False):
+    staff=__import__('employee_identity').ensure_mapping(db,user,required=True,verify_live=verify_live)
+    return employee(db,staff['employee_id'])
 
 
 def history(db, row, user, action, details=''):
@@ -117,6 +113,7 @@ def history(db, row, user, action, details=''):
 
 
 def bind_pending_requests(db,user):
+    __import__('employee_identity').ensure_mapping(db,user)
     staff=db.execute('SELECT e.employee_id,e.saeoll_id FROM employee_accounts a JOIN org_employees e ON e.employee_id=a.employee_id JOIN users u ON u.id=a.user_id WHERE a.user_id=? AND u.active=1 AND e.active=1 AND e.saeoll_id=u.username',(user['id'],)).fetchone()
     if not staff or not staff['saeoll_id']:return
     rows=db.execute('SELECT id FROM handover_requests WHERE recipient_account IS NULL AND recipient_employee=? AND recipient_saeoll_id=?',(staff['employee_id'],staff['saeoll_id'])).fetchall()
@@ -159,7 +156,7 @@ def send(db, user, body, source_changes=None):
     if type(workspace) is not int or type(draft_id) is not int:
         raise ValueError('업무 묶음과 저장된 인수인계서를 선택하세요.')
     auth_control.workspace_access(db, user, workspace, True)
-    sender = linked_employee(db, user)
+    sender = linked_employee(db, user, verify_live=True)
     target_id=text(body,'recipient_employee')
     cached=db.execute('SELECT 1 FROM org_employees WHERE employee_id=?',(target_id,)).fetchone()
     recipient=employee(db,target_id) if cached else None
@@ -353,6 +350,17 @@ def handle(handler,factory,method,source_changes=None):
                 if path=='/api/directory/departments':
                     import org_sync
                     handler.respond(200,org_sync.department_tree(db));return True
+                if path=='/api/directory/employees/search':
+                    keyword=query.get('q',[''])[0].strip()
+                    if not keyword or len(keyword)>100:raise ValueError('직원 이름 또는 직급을 1~100자로 입력하세요.')
+                    page=max(1,int(query.get('page',['1'])[0]));term='%'+keyword.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+                    where="e.active=1 AND d.active=1 AND d.hidden_from_picker=0 AND e.employment_status='active' AND (e.name LIKE ? ESCAPE '\\' OR e.position LIKE ? ESCAPE '\\')"
+                    args=(term,term)
+                    if not server_settings.dev_test_accounts():where+=" AND e.source!='test'"
+                    rows=db.execute("SELECT e.employee_id,e.name,e.position,e.department_id,d.name AS department,(e.saeoll_id IS NOT NULL AND length(e.saeoll_id)>0) AS account_eligible,(u.id IS NOT NULL AND u.active=1 AND lower(u.username)=lower(e.saeoll_id)) AS account_linked,COUNT(*) OVER(PARTITION BY e.name,e.position) AS duplicate_count FROM org_employees e JOIN org_departments d ON d.id=e.department_id LEFT JOIN employee_accounts a ON a.employee_id=e.employee_id LEFT JOIN users u ON u.id=a.user_id WHERE "+where+" ORDER BY e.name,d.name,e.position,e.employee_id LIMIT 50 OFFSET ?",(*args,(page-1)*50)).fetchall()
+                    total=db.execute('SELECT COUNT(*) FROM org_employees e JOIN org_departments d ON d.id=e.department_id WHERE '+where,args).fetchone()[0]
+                    audit(db,user,'전체 직원 검색',details='검색 원문 미기록');db.commit()
+                    handler.respond(200,dict(items=[dict(r) for r in rows],total=total,page=page,page_size=50,scope='all_departments',source='synchronized_directory',notice='동기화된 전체 조직도에서 검색합니다. 발송 시 공식 직원 식별정보를 검증합니다.'));return True
                 if path=='/api/directory/employees':
                     dept=query.get('department_id',[''])[0]
                     if query.get('live',[''])[0]=='1':
