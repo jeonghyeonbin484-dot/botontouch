@@ -9,6 +9,9 @@ def pdf_sources(raw):
     except ImportError:
         raise ValueError('PDF 구성요소가 없습니다. 실행하기.cmd를 다시 실행해 주세요.') from None
     try:
+        # Some parser warnings include raw file prefixes; do not write document bytes to logs.
+        import logging
+        logging.getLogger('pypdf').setLevel(logging.CRITICAL)
         reader = PdfReader(io.BytesIO(raw))
         if reader.is_encrypted:
             raise ValueError('암호화 PDF는 지원하지 않습니다. 암호를 해제한 파일을 등록해 주세요.')
