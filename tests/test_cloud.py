@@ -52,7 +52,9 @@ class CloudTests(unittest.TestCase):
  def tearDown(self):self.f.stop()
  def reject(self,path,body=None,client=None,status=403,headers=None):
   with self.assertRaises(urllib.error.HTTPError) as e:self.f.call(path,body,client,headers)
-  self.assertEqual(e.exception.code,status);return e.exception.read().decode()
+  self.assertEqual(e.exception.code,status)
+  try:return e.exception.read().decode()
+  finally:e.exception.close()
  def prepare(self):
   a=self.f.login('demo.a');doc=self.f.call('/api/documents','가상 사무용품을 매월 점검합니다.'.encode(),a,{'X-File-Name':'demo.txt'})
   draft=self.f.call('/api/drafts/generate',{'document_ids':[doc['id']]},a)
@@ -84,7 +86,19 @@ class CloudTests(unittest.TestCase):
   self.assertNotIn('PASSWORD',body);self.assertNotIn('postgresql',body);self.assertEqual(self.f.memory.payload,before)
  def test_absent_storage_fails_closed(self):
   with patch.dict(os.environ,{'DATABASE_URL':''}):self.reject('/api/auth/status',status=503)
- def test_request_size_limit(self):self.reject('/api/documents',b'x'*(4*1024*1024+1),status=413)
+ def test_request_size_limit(self):
+  # Validate early header rejection without a Windows TCP reset from a still-uploading client.
+  import http.client
+  connection=http.client.HTTPConnection('127.0.0.1',self.f.server.server_port)
+  try:
+   connection.putrequest('POST','/api/documents');connection.putheader('Content-Length',str(4*1024*1024+1));connection.endheaders()
+   response=connection.getresponse();self.assertEqual(response.status,413);self.assertIn('4MB',response.read().decode())
+  finally:connection.close()
+ def test_compressed_page_is_valid(self):
+  import gzip
+  a=self.f.login('demo.a')
+  with self.f.raw('/',client=a,headers={'Accept-Encoding':'gzip'}) as r:
+   self.assertEqual(r.headers.get('Content-Encoding'),'gzip');data=r.read();self.assertEqual(int(r.headers['Content-Length']),len(data));self.assertIn(b'journey-start',gzip.decompress(data))
  def test_cross_origin_request_blocked(self):
   a=self.f.login('demo.a');self.reject('/api/workspaces/create',{'title':'가상'},a,headers={'Origin':'https://untrusted.example'})
  def test_private_files_not_web_accessible(self):
