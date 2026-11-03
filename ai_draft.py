@@ -9,7 +9,7 @@ def validate_draft(value, references):
         if not isinstance(item, dict) or any(not isinstance(item.get(k), str) for k in ('category', 'text')):
             raise ValueError('초안 항목 형식이 올바르지 않습니다.')
         ids = item.get('source_ids')
-        if not isinstance(ids, list) or not ids or any(not isinstance(i, str) or i not in references for i in ids):
+        if not isinstance(ids, list) or any(not isinstance(i, str) or i not in references for i in ids) or (not ids and not any(t in item['text'] for t in ('확인 필요','확인되지 않음','확인필요'))):
             raise ValueError('원문에 없는 출처가 포함되어 결과를 저장하지 않았습니다. 다시 생성해 주세요.')
     return value
 
@@ -75,8 +75,11 @@ def generate(documents,question=None,expected_questions=False,document_check=Fal
  if document_check:return {**common,'summary':'테스트 응답입니다. 실제 자료의 누락·충돌을 판단하지 않았습니다.','findings':[]}
  if expected_questions:
   return {**common,'questions':[{'category':QUESTION_TYPES[i%6],'question':f'[테스트 질문 {i+1}] 이 가상 업무의 확인할 {QUESTION_TYPES[i%6]}은 무엇인가요?','source_ids':[first]} for i in range(12)]}
- if question is not None:return {**common,'answer':'[테스트 응답] 실제 AI 답변이 아닙니다. 선택한 가상 자료의 출처를 확인하는 예시입니다.','supported':False,'source_ids':[]}
+ if question is not None:
+  found=[key for key,ref in refs.items() if ('3월' in ref['text'] or '-03-' in ref['text'])] if '3월' in question else []
+  return {**common,'answer':'[모의 AI 응답 · 원문 발췌, 의미 분석 아님]\n'+('\n'.join(refs[key]['text'] for key in found) if found else '자료에서 확인되지 않음'),'supported':bool(found),'source_ids':found}
  items=[{'category':'담당업무','text':'[테스트 초안 · 실제 AI 아님] 선택한 자료를 읽고 아래 내용을 직접 확인·수정하세요.','source_ids':[first]}]
  for key,source in list(refs.items())[:15]:items.append({'category':'자료 내용','text':source['text'][:2000],'source_ids':[key]})
  items.append({'category':'확인 필요','text':'실제 AI 분석이 없는 테스트 초안입니다. 일정·연락처·미결사항은 작성자가 직접 확인하세요.','source_ids':[first]})
- return {**common,'title':'[가상 예시] 사무용품 구매 및 관리','items':items,'reviewed':False}
+ result={**common,'title':'[모의 초안] '+str(documents[0]['name']).rsplit('.',1)[0],'items':items,'reviewed':False}
+ return __import__('source_evidence').complete_sections(result)

@@ -177,6 +177,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_journey.handle(self, connect, 'GET'):
             return
+        if __import__('evidence_api').handle(self,connect,'GET'):
+            return
         try:
             with closing(connect()) as db:
                 auth_control.identity(self, db)
@@ -191,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
         except auth_control.AccessError as error:
             return self.respond(error.status, {'error': error.message})
         except ValueError as error:
-            return self.respond(400, {'error': str(error)})
+            return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if handover_workflow.handle(self, connect, 'GET', workspace_id, source_changes):
             return
         export_match = re.fullmatch(r'/api/drafts/(\d+)/export(?:\.(hwpx))?', self.path)
@@ -209,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 raw = export_hwpx.build(draft) if extension == 'hwpx' else export_docx.build(draft)
             except ValueError as error:
-                return self.respond(400, {'error': str(error)})
+                return self.respond(getattr(error,'http_status',400), {'error': str(error)})
             title = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '_', draft['title'])[:80] or '인수인계서'
             self.send_response(200)
             self.send_header('Content-Type', 'application/hwp+zip' if extension == 'hwpx' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
@@ -235,7 +237,7 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(200, [dict(row) for row in rows])
         elif self.path == '/api/documents':
             with closing(connect()) as db:
-                rows = db.execute('SELECT id,name,length(content) AS characters,created FROM documents WHERE workspace_id=? AND deleted=0 ORDER BY id DESC', (workspace_id,)).fetchall()
+                rows = db.execute('SELECT id,name,length(content) AS characters,created,substr(content,1,160) AS summary,CASE WHEN instr(content,char(10))>0 THEN substr(content,1,instr(content,char(10))-1) ELSE substr(content,1,80) END AS title FROM documents WHERE workspace_id=? AND deleted=0 ORDER BY id DESC', (workspace_id,)).fetchall()
             self.respond(200, [dict(r) for r in rows])
         elif self.path == '/api/drafts':
             with closing(connect()) as db:
@@ -288,6 +290,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_journey.handle(self, connect, 'POST'):
             return
+        if __import__('evidence_api').handle(self,connect,'POST'):
+            return
         try:
             with closing(connect()) as db:
                 auth_control.identity(self, db)
@@ -295,7 +299,7 @@ class Handler(BaseHTTPRequestHandler):
         except auth_control.AccessError as error:
             return self.respond(error.status, {'error': error.message})
         except ValueError as error:
-            return self.respond(400, {'error': str(error)})
+            return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if handover_workflow.handle(self, connect, 'POST', workspace_id, source_changes):
             return
         if self.path == '/api/manage/delete':
@@ -314,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
                     db.commit()
                 return self.respond(200, {'deleted': True})
             except (ValueError, TypeError) as error:
-                return self.respond(400, {'error': str(error)})
+                return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if self.path in ('/api/tasks/create', '/api/tasks/save'):
             try:
                 size = int(self.headers.get('Content-Length', '0'))
@@ -348,7 +352,7 @@ class Handler(BaseHTTPRequestHandler):
                     db.commit()
                 return self.respond(200, {'id': task_id})
             except (ValueError, TypeError) as error:
-                return self.respond(400, {'error': str(error)})
+                return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if self.path in ('/api/workspaces/create', '/api/workspaces/save'):
             try:
                 size = int(self.headers.get('Content-Length', '0'))
@@ -377,7 +381,7 @@ class Handler(BaseHTTPRequestHandler):
                     db.commit()
                 return self.respond(200, {'id': result_id})
             except (ValueError, TypeError) as error:
-                return self.respond(400, {'error': str(error)})
+                return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if self.path in ('/api/drafts/generate', '/api/drafts/save', '/api/questions/ask', '/api/questions/suggest'):
             try:
                 size = int(self.headers.get('Content-Length', '0'))
@@ -432,6 +436,7 @@ class Handler(BaseHTTPRequestHandler):
                     edited = ai_draft.validate_draft(body, previous['references'])
                     # Immutable source text and original generated content remain on the server.
                     previous.setdefault('original', {'title': previous['title'], 'items': previous['items']})
+                    edited['items']=__import__('source_evidence').preserve_review(previous,edited['items'])
                     previous.update(title=edited['title'], items=edited['items'], reviewed=body.get('reviewed') is True)
                     db.execute('UPDATE drafts SET payload=? WHERE id=?', (json.dumps(previous, ensure_ascii=False), body.get('id')))
                     handover_workflow.record_version(db, body['id'], workspace_id, previous, auth_control.actor(self), 'saved')
@@ -440,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
                     changes = source_changes(db, previous, workspace_id)
                 return self.respond(200, {'id': body['id'], **previous, 'edit_token': handover_workflow.fingerprint(previous), 'source_changes': changes})
             except (ValueError, TypeError) as error:
-                return self.respond(400, {'error': str(error)})
+                return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if self.path != '/api/documents':
             return self.respond(404, {'error': '페이지가 없습니다.'})
         try:
@@ -469,7 +474,7 @@ class Handler(BaseHTTPRequestHandler):
                 db.commit()
             self.respond(201, {'id': document_id, 'name': name})
         except ValueError as error:
-            self.respond(400, {'error': str(error)})
+            self.respond(getattr(error,'http_status',400), {'error': str(error)})
 
 
 if __name__ == '__main__':
