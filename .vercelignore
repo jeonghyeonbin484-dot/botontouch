@@ -1,0 +1,10 @@
+.git/
+.env*
+*.local.json
+data/
+artifacts/
+__pycache__/
+tests/
+.venv/
+
+*.local.md

@@ -1,0 +1,13 @@
+.env*
+!.env.example
+.vercel/
+__pycache__/
+*.sqlite3
+*.sqlite3-*
+data/
+artifacts/
+*.local.json
+.venv/
+.vercel
+
+*.local.md
