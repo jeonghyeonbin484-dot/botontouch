@@ -1,5 +1,5 @@
 """Vercel entry point. No local production DB/configuration is deployed."""
-import sys,io,json,os
+import sys,io,json,os,gzip
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import app
@@ -28,6 +28,9 @@ class handler(app.Handler):
    # Never serialize provider errors, connection strings, bodies, or credentials.
    self.wfile=output;self.capture=False;return self.simple(503,{'error':'테스트 저장소 처리에 실패했습니다. 잠시 후 다시 시도하세요. 기존 입력은 유지됩니다.'})
   self.wfile=output;self.capture=False
+  if len(payload)>1024 and 'gzip' in self.headers.get('Accept-Encoding','') and any(k.lower()=='content-type' and ('text/' in v or 'application/json' in v) for k,v in self.captured_headers):
+   payload=gzip.compress(payload,compresslevel=5)
+   self.captured_headers=[(k,v) for k,v in self.captured_headers if k.lower()!='content-length']+ [('Content-Encoding','gzip'),('Vary','Accept-Encoding'),('Content-Length',str(len(payload)))]
   super().send_response(self.captured_status)
   for key,value in self.captured_headers:super().send_header(key,value)
   super().end_headers();self.wfile.write(payload)

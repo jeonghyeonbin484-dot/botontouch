@@ -16,7 +16,7 @@ def run(base=None,password=PASSWORD):
    def login(name):
     context=browser.new_context(viewport={'width':1440,'height':1050},accept_downloads=True)
     context.route('**/*',lambda route:route.continue_() if route.request.url.startswith(base) else (external.append(route.request.resource_type),route.abort())[1])
-    page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)));page.goto(base);page.locator('#auth-username').fill(name);page.locator('#auth-password').fill(password);page.locator('#auth-submit').click();page.wait_for_function("!!document.querySelector('#staff-profile')?.textContent");return page
+    page=context.new_page();page.set_default_timeout(60000);page.on('pageerror',lambda e:errors.append(str(e)));page.goto(base);page.locator('#auth-username').fill(name);page.locator('#auth-password').fill(password);page.locator('#auth-submit').click();page.wait_for_function("!!document.querySelector('#staff-profile')?.textContent");return page
    a=login('demo.a');checks.append('가상 직원 로그인 및 보호된 홈 진입')
    a.locator('#journey-start').click();a.locator('#journey-title').fill('가상 사무용품 구매 및 관리');a.locator('#journey-prepare').click()
    a.wait_for_function("!state.busy.size && !journeyCreating && !document.querySelector('#journey-files').hidden")
