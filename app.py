@@ -179,6 +179,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if __import__('evidence_api').handle(self,connect,'GET'):
             return
+        if __import__('gemini_verification').handle(self,connect,'GET'):
+            return
         try:
             with closing(connect()) as db:
                 auth_control.identity(self, db)
@@ -291,6 +293,8 @@ class Handler(BaseHTTPRequestHandler):
         if handover_journey.handle(self, connect, 'POST'):
             return
         if __import__('evidence_api').handle(self,connect,'POST'):
+            return
+        if __import__('gemini_verification').handle(self,connect,'POST'):
             return
         try:
             with closing(connect()) as db:
