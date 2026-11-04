@@ -24,7 +24,7 @@ function sourceDocument(doc,highlight){
  }
  return article;
 }
-function sourcePositionToggle(article){const control=button('근거 위치 표시',()=>{const show=article.classList.toggle('show-source-positions');control.textContent=show?'근거 위치 숨기기':'근거 위치 표시';control.setAttribute('aria-pressed',String(show));},'button secondary small');control.setAttribute('aria-pressed','false');return control;}
+function sourcePositionToggle(article){const control=button('근거 위치 표시',()=>{const show=article.classList.toggle('show-source-positions');control.textContent=show?'근거 위치 숨기기':'근거 위치 표시';control.setAttribute('aria-pressed',String(show));control.setAttribute('aria-label',control.textContent);},'button secondary small');control.setAttribute('aria-pressed','false');return control;}
 const sourceDialog=node('dialog','source-document-dialog');sourceDialog.id='source-document-dialog';const sourceDialogHead=node('div','source-dialog-header');const sourceDialogTitle=node('h2');const sourceDialogClose=button('원문 창 닫기',()=>sourceDialog.close(),'button secondary small');sourceDialogHead.append(sourceDialogTitle,sourceDialogClose);const sourceDialogInfo=node('p','muted'),sourceDialogBody=node('div','source-dialog-body');sourceDialog.append(sourceDialogHead,sourceDialogInfo,sourceDialogBody);document.body.append(sourceDialog);
 function storedSourceDocument(ref){
  const request=typeof requestSelection!=='undefined'?requestSelection:null;
