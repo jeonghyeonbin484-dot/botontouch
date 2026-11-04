@@ -11,7 +11,7 @@ class handler(app.Handler):
  def do_POST(self):self.dispatch('POST')
  def dispatch(self,method):
   if self.path.split('?')[0]=='/api/demo/status':
-   return self.simple(200,{'environment':'public-demo','ai_mode':'mock','external_transmission_allowed':False,'fictional_verification_enabled':os.environ.get('GEMINI_VERIFY_ENABLED')=='true','external_transmission_scope':'fixed_fictional_admin_only' if os.environ.get('GEMINI_VERIFY_ENABLED')=='true' else 'none','real_organization_enabled':False,'storage_configured':bool(os.environ.get('DATABASE_URL')),'notice':'가상 데이터 전용 공개 테스트'})
+   return self.simple(200,{'environment':'public-demo','ai_mode':('live-fictional' if __import__('staff_ai_policy').active() else 'mock'),'staff_ai_live':__import__('staff_ai_policy').active(),'staff_ai_model':os.environ.get('GEMINI_MODEL',''),'staff_ai_notice':'실제 AI는 허용된 가상 드론 원본과 가상 질문만 전송합니다. 일반 행정자료 전송은 차단됩니다.','external_transmission_allowed':False,'fictional_verification_enabled':os.environ.get('GEMINI_VERIFY_ENABLED')=='true','external_transmission_scope':'fixed_fictional_admin_only' if os.environ.get('GEMINI_VERIFY_ENABLED')=='true' else 'none','real_organization_enabled':False,'storage_configured':bool(os.environ.get('DATABASE_URL')),'notice':'가상 데이터 전용 공개 테스트'})
   try:size=int(self.headers.get('Content-Length','0'))
   except ValueError:return self.simple(400,{'error':'요청 크기가 올바르지 않습니다.'})
   if size<0 or size>4*1024*1024:return self.simple(413,{'error':'공개 테스트 파일은 요청당 4MB까지 등록할 수 있습니다. 기존 입력은 유지됩니다.'})

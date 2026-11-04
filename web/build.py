@@ -10,6 +10,7 @@ js += '\n' + (ROOT / 'requests.js').read_text(encoding='utf-8')
 js += '\n' + (ROOT / 'accounts.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'journey.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'evidence.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'staff-ai.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'gemini-verify.js').read_text(encoding='utf-8-sig')
 assert '</script' not in js.lower()
 assert shell.count('/* APP_STYLE */') == shell.count('/* APP_SCRIPT */') == 1

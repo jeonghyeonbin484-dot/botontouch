@@ -163,6 +163,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
+        route=self.path.split('?')[0]
+        if any(part.startswith('.') for part in route.split('/') if part) or route.endswith(('.py','.sqlite3','.json','.env')):
+            return self.respond(404,{'error':'페이지가 없습니다.'})
         if not self.path.split('?')[0].startswith('/api/'):
             page='login.html' if self.path.split('?')[0]=='/login' else 'index.html'
             if page=='index.html':
@@ -414,14 +417,14 @@ class Handler(BaseHTTPRequestHandler):
                         question = body.get('question')
                         if not isinstance(question, str) or not 1 <= len(question.strip()) <= 2000:
                             raise ValueError('질문을 1~2000자로 입력해 주세요.')
-                        answer = ai_draft.generate(docs, question=question.strip())
+                        answer = ai_draft.generate(docs, question=question.strip(),actor=self.user)
                         answer.update(question=question.strip(), documents=[{'id': d['id'], 'name': d['name']} for d in docs])
                         with closing(connect()) as db:
                             cursor = db.execute('INSERT INTO questions(payload,workspace_id) VALUES(?,?)', (json.dumps(answer, ensure_ascii=False), workspace_id))
                             db.commit()
                             answer_id = cursor.lastrowid
                         return self.respond(201, {'id': answer_id, **answer})
-                    draft = ai_draft.generate(docs)
+                    draft = ai_draft.generate(docs,actor=self.user)
                     with closing(connect()) as db:
                         cursor = db.execute('INSERT INTO drafts(payload,workspace_id) VALUES(?,?)', (json.dumps(draft, ensure_ascii=False), workspace_id))
                         draft_id = cursor.lastrowid
