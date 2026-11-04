@@ -31,8 +31,8 @@ def preserve_review(previous,items):
   if not item.get('source_ids'):item['source_check_required']=True
  return result
 
-def complete_sections(value):
+def complete_sections(value,sections=None):
  value=copy.deepcopy(value);present={i['category'] for i in value['items']}
- for section in SECTIONS:
+ for section in (SECTIONS if sections is None else sections):
   if section not in present:value['items'].append({'category':section,'text':'자료에서 확인되지 않음 · 전임자 확인 필요','source_ids':[],'source_check_required':True})
  return value

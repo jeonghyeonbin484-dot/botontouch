@@ -12,6 +12,7 @@ js += '\n' + (ROOT / 'journey.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'evidence.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'staff-ai.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'gemini-verify.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'document-view.js').read_text(encoding='utf-8-sig')
 assert '</script' not in js.lower()
 assert shell.count('/* APP_STYLE */') == shell.count('/* APP_SCRIPT */') == 1
 output = shell.replace('/* APP_STYLE */', css).replace('/* APP_SCRIPT */', js)
