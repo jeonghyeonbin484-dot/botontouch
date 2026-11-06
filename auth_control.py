@@ -184,6 +184,8 @@ def handle(handler,factory,method):
                 user=getattr(handler,'user',None)
             if path=='/api/auth/status' and method=='GET':
                 json_cookie(handler,{'enabled':enabled(db),'setup_required':not enabled(db),'auth_required':True,'session_policy':'interactive-v2','user':user,'test_accounts_enabled':server_settings.dev_test_accounts(),'bootstrap_token_required':server_settings.central(),'personal_initial_password':__import__('staff_account_sync').enabled(db)});return True
+            if path=='/api/auth/session-password/options' and method=='GET':
+                handler.respond(200,{'allowed':bool(user and user['must_change_password']),'username':user['username'] if user else None});return True
             if path=='/api/auth/reset-request' and method=='POST':
                 body=read_json(handler);name=validate_username(body.get('username'));key='reset:'+digest(handler.client_address[0]+':'+name);row=db.execute('SELECT * FROM login_failures WHERE identity=?',(key,)).fetchone()
                 if row and row['blocked_until']>time.time():raise AccessError(429,'초기화 요청이 많습니다. 잠시 후 다시 요청하세요.')
@@ -228,6 +230,17 @@ def handle(handler,factory,method):
                 except Exception:token=''
                 db.execute('DELETE FROM sessions WHERE token_hash=?',(session_digest(token),));audit(db,handler,'로그아웃',user['id'] if user else None);db.commit();json_cookie(handler,{'logged_out':True},'');return True
             if not user:raise AccessError(401,'로그인이 필요합니다.')
+            if path=='/api/auth/session-password' and method=='POST':
+                body=read_json(handler)
+                if not user['must_change_password']:raise AccessError(403,'최초 비밀번호 설정 권한이 없습니다.')
+                if validate_username(body.get('username'))!=user['username']:raise AccessError(403,'본인 계정의 비밀번호만 설정할 수 있습니다.')
+                new=body.get('new_password');passwords.validate(new)
+                if new!=body.get('confirmation'):raise ValueError('새 비밀번호 확인이 일치하지 않습니다.')
+                db.execute('BEGIN IMMEDIATE');row=db.execute('SELECT * FROM users WHERE id=?',(user['id'],)).fetchone()
+                if not row or not row['active'] or not row['must_change_password']:raise AccessError(403,'비밀번호 설정 권한이 없습니다.')
+                if verify_limited(new,row):raise ValueError('현재와 다른 비밀번호를 설정하세요.')
+                db.execute("UPDATE users SET password_hash=?,salt='',must_change_password=0,initial_shared=0,password_changed=CURRENT_TIMESTAMP WHERE id=?",(passwords.hash_password(new),user['id']))
+                db.execute('DELETE FROM sessions WHERE user_id=?',(user['id'],));audit(db,handler,'인증된 세션으로 최초 비밀번호 설정',user['id']);db.commit();json_cookie(handler,{'changed':True},'');return True
             if path=='/api/auth/password' and method=='POST':
                 body=read_json(handler);current=body.get('current_password');new=body.get('new_password');passwords.validate(new)
                 if new!=body.get('confirmation') or current==new:raise ValueError('새 비밀번호 확인이 다르거나 현재 비밀번호와 같습니다.')
