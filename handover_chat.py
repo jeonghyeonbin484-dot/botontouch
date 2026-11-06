@@ -80,7 +80,7 @@ def handle(handler,factory,method):
             if path=='/api/chat/unread' and method=='GET':
                 import handover_requests
                 handover_requests.bind_pending_requests(db,user)
-                rows=db.execute('SELECT m.request_id,count(*) AS count FROM request_chat_messages m JOIN handover_requests r ON r.id=m.request_id LEFT JOIN request_chat_reads s ON s.request_id=r.id AND s.user_id=? WHERE (? IN (r.sender_account,r.recipient_account)) AND m.recipient_employee=r.recipient_employee AND m.sender_id!=? AND m.id>coalesce(s.last_id,0) GROUP BY m.request_id',(user['id'],user['id'],user['id'])).fetchall();db.commit()
+                rows=db.execute("SELECT m.request_id,count(*) AS count,max(m.id) AS last_id,json_extract(CASE WHEN r.sender_account=? THEN r.recipient_snapshot ELSE r.sender_snapshot END,'$.name') AS peer_name FROM request_chat_messages m JOIN handover_requests r ON r.id=m.request_id LEFT JOIN request_chat_reads s ON s.request_id=r.id AND s.user_id=? WHERE (? IN (r.sender_account,r.recipient_account)) AND m.recipient_employee=r.recipient_employee AND m.sender_id!=? AND m.id>coalesce(s.last_id,0) GROUP BY m.request_id ORDER BY max(m.id) DESC",(user['id'],user['id'],user['id'],user['id'])).fetchall();db.commit()
                 handler.respond(200,{'total':sum(r['count'] for r in rows),'rooms':[dict(r) for r in rows]});return True
             if not match: raise ValueError('대화방 경로를 확인하세요.')
             rid=int(match[1]);kind=match[2];fid=match[3];row=access(db,user,rid);db.commit()

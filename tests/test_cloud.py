@@ -1,7 +1,7 @@
 """HTTP contract tests using a transactional in-memory Postgres double.
 No Neon/Vercel/OpenAI/Gemini/organization requests are performed.
 """
-import sys,os,io,json,threading,types,http.cookiejar,urllib.request,urllib.error,unittest,zipfile
+import sys,os,io,json,threading,types,uuid,http.cookiejar,urllib.request,urllib.error,unittest,zipfile
 from pathlib import Path
 from unittest.mock import patch
 from contextlib import closing
@@ -15,25 +15,29 @@ import app,cloud_store,handover_workflow
 PASSWORD='Fictional-Test-Password-1947!'
 
 class MemoryDatabase:
- def __init__(self):self.payload=None;self.lock=threading.Lock();self.fail_commit=False;self.commits=0
+ def __init__(self):self.payload=None;self.lock=threading.Lock();self.fail_commit=False;self.commits=0;self.version=0;self.identity=uuid.uuid4().hex;self.downloads=0;self.downloaded_bytes=0
  def connect(self,*args,**kwargs):return Transaction(self)
 class Transaction:
- def __init__(self,owner):self.owner=owner;self.payload=None;self.changed=False
- def __enter__(self):self.owner.lock.acquire();self.payload=self.owner.payload;return self
+ def __init__(self,owner):self.owner=owner;self.payload=None;self.changed=False;self.result=None;self.version=0
+ def __enter__(self):self.owner.lock.acquire();self.payload=self.owner.payload;self.version=self.owner.version;return self
  def __exit__(self,kind,value,trace):
   try:
    if kind is None:
     if self.owner.fail_commit:raise RuntimeError('FAKE DATABASE PASSWORD MUST NEVER LEAK')
-    self.owner.payload=self.payload;self.owner.commits+=1
+    self.owner.payload=self.payload;self.owner.version=self.version;self.owner.commits+=1
   finally:self.owner.lock.release()
  def execute(self,sql,args=None):
-  if sql.startswith('UPDATE baton_demo_state'):self.payload=bytes(args[0]);self.changed=True
+  if sql.startswith('SELECT updated'):self.result=(self.owner.identity+':'+str(self.version),)
+  elif sql.startswith('SELECT payload'):
+   self.owner.downloads+=1;self.owner.downloaded_bytes+=len(self.payload or b'');self.result=(self.payload,)
+  elif sql.startswith('UPDATE baton_demo_state'):
+   self.payload=bytes(args[0]);self.changed=True;self.version+=1;self.result=(self.owner.identity+':'+str(self.version),)
   return self
- def fetchone(self):return (self.payload,)
+ def fetchone(self):return self.result
 
 class Fixture:
  def start(self):
-  self.memory=MemoryDatabase();self.driver=patch.dict(sys.modules,{'psycopg':types.SimpleNamespace(connect=self.memory.connect)});self.driver.start()
+  cloud_store.reset_runtime_cache();self.memory=MemoryDatabase();self.driver=patch.dict(sys.modules,{'psycopg':types.SimpleNamespace(connect=self.memory.connect)});self.driver.start()
   self.env=patch.dict(os.environ,{'DATABASE_URL':'postgresql://fictional.invalid/test','BATON_DEMO_PASSWORD':PASSWORD,'BATON_CLOUD_LOCAL_TEST':'1','AI_MODE':'mock','BATON_STAFF_AI_MODE':'mock'});self.env.start()
   self.server=app.LocalServer(('127.0.0.1',0),handler);self.portenv=patch.dict(os.environ,{'BATON_PORT':str(self.server.server_port)});self.portenv.start()
   threading.Thread(target=self.server.serve_forever,daemon=True).start();self.url='http://127.0.0.1:'+str(self.server.server_port);return self

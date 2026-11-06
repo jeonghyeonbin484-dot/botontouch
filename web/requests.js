@@ -33,7 +33,7 @@ async function loadRequestCentre(){
  if(!account.enabled||!account.user){$('request-message').textContent='직원 간 요청은 로그인과 USER_ID 계정 연결이 필요합니다. 인수인계 기본 정보에서 관리자를 먼저 등록하세요.';$('request-message').hidden=false;return;}
  try{await loadRegisteredDepartments();const [status,sent,received]=await Promise.all([api('/api/directory/status'),api('/api/requests?box=sent'),api('/api/requests?box=received')]);if(!Array.isArray(sent.items)||!Array.isArray(received.items))throw Error('요청함 응답 형식을 확인하세요.');directoryLiveEnabled=status.live_enabled===true;$('directory-status').textContent=status.notice;
  $('request-draft').replaceChildren(new Option('저장한 문서 선택',''));for(const draft of state.drafts)$('request-draft').append(new Option(draft.title+(draft.reviewed?' · 전임자 검토 완료':' · 검토 필요'),draft.id));if(state.draft)$('request-draft').value=state.draft.id;
- $('nav-inbox-count').textContent=received.pending;renderRequestList('sent-requests',sent.items);renderRequestList('received-requests',received.items);renderRecipientSelection();if(account.user.role==='admin'){const users=await api('/api/auth/users');$('org-link-user').replaceChildren(new Option('로그인 계정 선택',''));for(const u of users)$('org-link-user').append(new Option(u.username,u.id));}}
+ $('nav-inbox-count').textContent=received.pending;renderRequestList('sent-requests',sent.items);renderRequestList('received-requests',received.items);renderRecipientSelection();if(account.user.role==='admin'&&['settings','accounts'].includes(state.route)){const users=await api('/api/auth/users');$('org-link-user').replaceChildren(new Option('로그인 계정 선택',''));for(const u of users)$('org-link-user').append(new Option(u.username,u.id));}}
  catch(e){message('request-message',e.message+' 새로 불러오기를 눌러 주세요.','error');}
 }
 function renderRequestList(id,rows){const box=$(id);box.replaceChildren();if(!rows.length){empty(box,'아직 요청이 없습니다','요청은 특정 직원의 로그인 계정으로 전달됩니다.','document',true);return;}for(const row of rows){const wrap=node('article','request-list-row');wrap.append(node('span','badge '+(row.state==='needs_info'?'amber':'neutral'),row.state_label),button(row.title,()=>openAddressedRequest(row.id),'text-button'),node('p','muted',row.sender.department+' · '+row.sender.name+' → '+row.recipient.department+' · '+row.recipient.position+' '+row.recipient.name),node('small','muted',formatRequestTime(row.created)));wrap.append(button('대화하기',()=>void openChat(row.id),'button secondary small','chat'));box.append(wrap);}}
@@ -55,7 +55,7 @@ $('org-employee-form').onsubmit=e=>{e.preventDefault();void requestJob('admin',a
 $('org-link-form').onsubmit=e=>{e.preventDefault();void requestJob('admin',async()=>{if(!await confirmAction('직원 USER_ID와 계정을 연결할까요?','동명이인 여부와 공식 USER_ID를 확인하세요. 이름으로 자동 연결하지 않습니다.','계정 연결'))return;await post('/api/directory/link',{employee_id:$('org-link-employee').value,user_id:Number($('org-link-user').value)});await loadRequestCentre();if($('recipient-department').value)await loadDirectoryPage();directoryMessage('직원과 로그인 계정을 연결했습니다.');});};
 $('org-refresh').onclick=()=>requestJob('admin',async()=>{if(!$('recipient-department').value)throw Error('조회할 부서를 먼저 선택하세요.');const result=await post('/api/directory/refresh',{department_id:$('recipient-department').value});await loadDirectoryPage();message('request-message','공식 조직도 응답 '+result.updated+'명을 반영했습니다.');});
 const loadRequestOriginal=loadAll;loadAll=async function(){await loadRequestOriginal();await loadRequestCentre();};const initializeRequestOriginal=initialize;initialize=async function(){await initializeRequestOriginal();if(!state.workspace){await loadRequestCentre();if(account.user){location.hash='home';message('global-message','새 인수인계로 업무를 시작하거나 받은 요청함을 확인하세요.');}}};
-window.addEventListener('hashchange',()=>{if(!['inbox','sent'].includes(state.route))$('request-detail-panel').hidden=true;if(['inbox','sent'].includes(state.route))void loadRequestCentre();});
+window.addEventListener('hashchange',()=>{if(!['inbox','sent'].includes(state.route))$('request-detail-panel').hidden=true;if(['inbox','sent','settings'].includes(state.route))void loadRequestCentre();});
 
 const requestAccountOriginal=loadAccountPanel;loadAccountPanel=async function(){await requestAccountOriginal();$('directory-admin').hidden=account.user?.role!=='admin';if(account.user?.role==='admin'){await loadRegisteredDepartments();await showOrgSyncStatus();const users=await api('/api/auth/users');$('org-link-user').replaceChildren(new Option('로그인 계정 선택',''));for(const u of users)$('org-link-user').append(new Option(u.username,u.id));}};
 
@@ -65,17 +65,17 @@ $('directory-reload').onclick=()=>void requestJob('admin',loadRegisteredDepartme
 
 $('org-import-form').onsubmit=e=>{e.preventDefault();void requestJob('admin',async()=>{const result=await post('/api/directory/refresh',{department_id:$('org-import-code').value.trim()});await loadRegisteredDepartments();directoryMessage('실제 조직도 직원 '+result.updated+'명을 불러왔습니다. 직원 계정 관리에서 계정을 발급하세요.');});};
 
-let orgSyncTimer=null;
+let orgSyncTimer=null,orgSyncPolls=0;
 async function showOrgSyncStatus(){
  if(account.user?.role!=='admin')return;
  const result=await api('/api/directory/sync-status'),r=result.report||{};
  const labels={not_started:'아직 실행하지 않음',running:'동기화 진행 중',completed:'완료',partial:'일부 확인 필요',failed:'실패'};
  $('org-sync-status').textContent=(labels[result.state]||result.state)+' · 부서 '+(r.departments||0)+'개 · 직원 조회 성공 '+(r.department_success||0)+' / 실패 '+(r.department_failure||0)+' · 빈 부서 '+(r.empty_departments||0)+' · 직원 '+(r.imported_employees||0)+'명 반영 · 중복 '+(r.duplicate_rows||0)+' · 충돌 '+(r.identity_conflicts||0)+' · 미조회 직원 확인 필요 '+(r.missing_staff_review||0)+(r.error?' · '+r.error:'');
  $('org-sync-errors').replaceChildren();for(const item of (r.failures||[]).slice(0,100))$('org-sync-errors').append(node('p','muted',(item.department_name||item.department_id)+' · '+item.department_id+' · 상위 '+(item.parent_department||'확인 필요')+' · '+item.error));
- clearTimeout(orgSyncTimer);if(result.state==='running')orgSyncTimer=setTimeout(()=>void showOrgSyncStatus().catch(e=>directoryMessage(e.message,'error')),2000);
+ clearTimeout(orgSyncTimer);if(result.state==='running'&&!document.hidden){orgSyncPolls++;if(orgSyncPolls<=30)orgSyncTimer=setTimeout(()=>void showOrgSyncStatus().catch(e=>directoryMessage(e.message,'error')),Math.min(30000,5000+orgSyncPolls*1000));else $('org-sync-status').append(document.createTextNode(' · 자동 조회를 잠시 멈췄습니다. 상태 확인 버튼으로 다시 조회하세요.'));}else if(result.state!=='running')orgSyncPolls=0;
  return result;
 }
-async function beginOrgSync(employees){await requestJob('admin',async()=>{
+async function beginOrgSync(employees){orgSyncPolls=0;await requestJob('admin',async()=>{
  if(employees&&!await confirmAction('전체 부서의 직원을 동기화할까요?','공식 부서별 API를 조회합니다. 계정 자동 활성화·퇴직자 자동 삭제는 하지 않습니다.','전체 직원 동기화'))return;
  await post('/api/directory/sync',{employees});directoryMessage('조직도 동기화를 시작했습니다. 아래 진행 상태를 확인하세요.');
  setTimeout(()=>void showOrgSyncStatus().catch(e=>directoryMessage(e.message,'error')),500);

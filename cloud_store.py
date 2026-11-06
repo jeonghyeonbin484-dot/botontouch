@@ -5,14 +5,35 @@ HTTP response before durable commit. Fresh /tmp files per request prevent sharin
 mutable SQLite state across concurrent Fluid Compute invocations.
 This preserves the existing SQLite SQL without migrating/copying local business data.
 """
-import os,tempfile
+import os,tempfile,hashlib,threading,time
 from contextlib import contextmanager,closing
 from pathlib import Path
 import cloud_context
 
 MAX_DATABASE_BYTES=20*1024*1024
 
-class StorageUnavailable(Exception):pass
+class StorageUnavailable(Exception):
+ def __init__(self,message,code='STORAGE_UNAVAILABLE',retry_after=15):
+  super().__init__(message);self.code=code;self.retry_after=retry_after
+
+# 캐시 사용 전에도 PostgreSQL의 최신 버전을 매 요청 검증한다. 인증 결과는 캐시하지 않는다.
+_cache_lock=threading.Lock()
+_snapshot_cache={}
+_failure_backoff={}
+
+def reset_runtime_cache():
+ with _cache_lock:_snapshot_cache.clear();_failure_backoff.clear()
+
+def _cached(key,version):
+ with _cache_lock:
+  item=_snapshot_cache.get(key)
+  return item[1] if item and item[0]==version else None
+
+def _publish(key,version,raw):
+ with _cache_lock:
+  _snapshot_cache.clear();_snapshot_cache[key]=(version,raw)
+  _failure_backoff.pop(key,None)
+
 
 
 def seed():
@@ -52,33 +73,54 @@ def demo_search_fixtures():
 
 @contextmanager
 def database_request():
- """Never fall back to nonpersistent SQLite when shared storage is missing."""
+ """최신 버전 확인 → 개인 요청별 복사 → 원자적 저장. DB 장애 시 캐시로 인증하지 않는다."""
  url=os.environ.get('DATABASE_URL','')
- if not url:raise StorageUnavailable('공유 테스트 데이터베이스가 연결되지 않았습니다.')
+ if not url:raise StorageUnavailable('공유 데이터베이스가 연결되지 않았습니다.')
+ key=hashlib.sha256(url.encode()).digest()
+ with _cache_lock:failure=_failure_backoff.get(key)
+ if failure and failure[0]>time.monotonic():raise StorageUnavailable(failure[1],failure[2],max(1,int(failure[0]-time.monotonic())))
  import psycopg
- # Credentials must never appear in exception responses or logs.
- with psycopg.connect(url,connect_timeout=10,autocommit=False) as pg:
-  pg.execute("SET LOCAL lock_timeout='15s'")
-  pg.execute("SET LOCAL statement_timeout='85s'")
-  pg.execute('CREATE TABLE IF NOT EXISTS baton_demo_state (id integer PRIMARY KEY CHECK(id=1), payload bytea, updated timestamptz DEFAULT now())')
-  pg.execute('INSERT INTO baton_demo_state(id) VALUES(1) ON CONFLICT DO NOTHING')
-  row=pg.execute('SELECT payload FROM baton_demo_state WHERE id=1 FOR UPDATE').fetchone()
-  before=bytes(row[0]) if row[0] is not None else None
-  with tempfile.TemporaryDirectory(prefix='baton-demo-') as folder:
-   root=Path(folder);file=root/'library.sqlite3'
-   if before:
-    if len(before)>MAX_DATABASE_BYTES:raise StorageUnavailable('테스트 저장공간 한도를 초과했습니다.')
-    file.write_bytes(before)
-   token=cloud_context.current_data.set(root)
-   try:
-    if os.environ.get('BATON_CLOUD_LOCAL_TEST')=='1':
-     if not before:seed()
-     demo_search_fixtures()
-    elif not before:
-     with closing(__import__('app').connect()) as initial:initial.commit()
-    yield
-    after=file.read_bytes()
-    if len(after)>MAX_DATABASE_BYTES:raise StorageUnavailable('공개 테스트의 합계 저장 한도(20MB)를 초과했습니다. 입력은 화면에 유지됩니다.')
-    if after!=before:pg.execute('UPDATE baton_demo_state SET payload=%s,updated=now() WHERE id=1',(after,))
-   finally:cloud_context.current_data.reset(token)
- # Commit occurs here, before HTTP response emission in api/index.py.
+ pending=None
+ try:
+  with psycopg.connect(url,connect_timeout=10,autocommit=False,prepare_threshold=None) as pg:
+   pg.execute("SET LOCAL lock_timeout='15s'")
+   pg.execute("SET LOCAL statement_timeout='85s'")
+   pg.execute('CREATE TABLE IF NOT EXISTS baton_demo_state (id integer PRIMARY KEY CHECK(id=1), payload bytea, updated timestamptz DEFAULT now())')
+   pg.execute('INSERT INTO baton_demo_state(id) VALUES(1) ON CONFLICT DO NOTHING')
+   # 큰 payload 대신 작은 버전값만 받는다. 다른 인스턴스의 수정·세션 폐기도 즉시 감지한다.
+   version=pg.execute('SELECT updated FROM baton_demo_state WHERE id=1 FOR UPDATE').fetchone()[0]
+   before=_cached(key,version)
+   if before is None:
+    row=pg.execute('SELECT payload FROM baton_demo_state WHERE id=1').fetchone()
+    before=bytes(row[0]) if row[0] is not None else None
+   with tempfile.TemporaryDirectory(prefix='baton-request-') as folder:
+    root=Path(folder);file=root/'library.sqlite3'
+    if before:
+     if len(before)>MAX_DATABASE_BYTES:raise StorageUnavailable('저장공간 한도를 초과했습니다.')
+     file.write_bytes(before)
+    token=cloud_context.current_data.set(root)
+    try:
+     if os.environ.get('BATON_CLOUD_LOCAL_TEST')=='1':
+      if not before:seed()
+      demo_search_fixtures()
+     elif not before:
+      with closing(__import__('app').connect()) as initial:initial.commit()
+     yield
+     after=file.read_bytes()
+     if len(after)>MAX_DATABASE_BYTES:raise StorageUnavailable('공유 저장공간 한도(20MB)를 초과했습니다. 입력은 화면에 유지됩니다.')
+     if after!=before:
+      version=pg.execute('UPDATE baton_demo_state SET payload=%s,updated=clock_timestamp() WHERE id=1 RETURNING updated',(after,)).fetchone()[0]
+     pending=(version,after)
+    finally:cloud_context.current_data.reset(token)
+  # PostgreSQL 커밋 성공 뒤에만 캐시를 공개한다. 커밋 실패 시 세션/데이터 성공 응답도 나가지 않는다.
+  if pending:_publish(key,*pending)
+ except StorageUnavailable:raise
+ except Exception as error:
+  quota='quota' in str(error).lower() and 'exceeded' in str(error).lower()
+  if quota or type(error).__name__ in ('OperationalError','InterfaceError','ConnectionTimeout'):
+   delay=60 if quota else 15
+   code='STORAGE_QUOTA_EXCEEDED' if quota else 'STORAGE_UNAVAILABLE'
+   notice='DB 사용 한도 초과로 연결이 차단되었습니다. 기존 데이터는 유지됩니다.' if quota else 'DB 연결을 확인할 수 없습니다. 잠시 후 다시 시도하세요.'
+   with _cache_lock:_failure_backoff[key]=(time.monotonic()+delay,notice,code)
+   raise StorageUnavailable(notice,code,delay) from None
+  raise

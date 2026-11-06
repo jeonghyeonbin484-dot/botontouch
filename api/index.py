@@ -31,7 +31,7 @@ class handler(app.Handler):
     payload=self.wfile.getvalue()
     if len(payload)>4*1024*1024:raise StorageUnavailable('다운로드가 Vercel 함수의 응답 한도(4MB)를 초과했습니다.')
   except StorageUnavailable as error:
-   self.wfile=output;self.capture=False;return self.simple(503,{'error':str(error)})
+   self.wfile=output;self.capture=False;return self.simple(503,{'error':str(error),'code':error.code,'retry_after':error.retry_after})
   except Exception as error:
    # Never serialize provider errors, connection strings, bodies, or credentials.
    self.wfile=output;self.capture=False;return self.simple(503,__import__('storage_diagnostics').payload(error))
@@ -51,4 +51,6 @@ class handler(app.Handler):
  def end_headers(self):
   if not getattr(self,'capture',False):super().end_headers()
  def simple(self,status,data):
-  body=json.dumps(data,ensure_ascii=False).encode();self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(body)
+  body=json.dumps(data,ensure_ascii=False).encode();self.send_response(status);
+  if status==503:self.send_header('Retry-After',str(data.get('retry_after',60)))
+  self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(body)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(body)
