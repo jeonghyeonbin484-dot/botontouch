@@ -198,6 +198,8 @@ def send(db, user, body, source_changes=None):
     for key in draft.get('references', {}):
         match = re.match(r'D(\d+)-S', key)
         if match: ids.add(int(match[1]))
+    for qa in snapshot['gap_review']['questions']:
+        if qa.get('qa_kind')=='expected':ids.update(qa.get('qa_documents',[]))
     docs = []
     for doc_id in sorted(ids):
         row = db.execute('SELECT id,name,content,sources,revision FROM documents WHERE id=? AND workspace_id=? AND deleted=0', (doc_id,workspace)).fetchone()

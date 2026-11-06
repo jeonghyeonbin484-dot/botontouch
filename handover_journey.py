@@ -6,7 +6,7 @@ import auth_control,ai_draft,handover_workflow as workflow
 
 def ensure(db):
  cols={r['name'] for r in db.execute('pragma table_info(followups)')}
- for name,definition in [('request_id','INTEGER'),('origin',"TEXT NOT NULL DEFAULT 'manual'"),('reason',"TEXT NOT NULL DEFAULT ''"),('source_ids',"TEXT NOT NULL DEFAULT '[]'"),('baseline',"TEXT NOT NULL DEFAULT ''"),('application',"TEXT NOT NULL DEFAULT 'none'"),('proposal','TEXT')]:
+ for name,definition in [('request_id','INTEGER'),('origin',"TEXT NOT NULL DEFAULT 'manual'"),('reason',"TEXT NOT NULL DEFAULT ''"),('source_ids',"TEXT NOT NULL DEFAULT '[]'"),('baseline',"TEXT NOT NULL DEFAULT ''"),('application',"TEXT NOT NULL DEFAULT 'none'"),('proposal','TEXT'),('qa_kind', "TEXT NOT NULL DEFAULT 'legacy'"),('recommended_answer', "TEXT NOT NULL DEFAULT ''"),('answer_source_ids', "TEXT NOT NULL DEFAULT '[]'"),('answer_supported', 'INTEGER NOT NULL DEFAULT 0'),('qa_included', 'INTEGER NOT NULL DEFAULT 1'),('qa_archived', 'INTEGER NOT NULL DEFAULT 0'),('qa_references', "TEXT NOT NULL DEFAULT '{}'"),('qa_documents', "TEXT NOT NULL DEFAULT '[]'"),('qa_revision', 'INTEGER NOT NULL DEFAULT 0'),('qa_mode',"TEXT NOT NULL DEFAULT 'unknown'"),('qa_model',"TEXT NOT NULL DEFAULT ''")]:
   if name not in cols:db.execute('ALTER TABLE followups ADD COLUMN '+name+' '+definition)
  db.executescript('''CREATE TABLE IF NOT EXISTS journey_checks(id INTEGER PRIMARY KEY,workspace_id INTEGER NOT NULL,draft_id INTEGER NOT NULL,baseline TEXT NOT NULL,payload TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
  CREATE TABLE IF NOT EXISTS followup_events(id INTEGER PRIMARY KEY,followup_id INTEGER NOT NULL,actor_id INTEGER NOT NULL,action TEXT NOT NULL,payload TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
@@ -18,14 +18,14 @@ def ensure(db):
 def question_rows(db,draft_id=None,request_id=None):
  column,value=('request_id',request_id) if request_id is not None else ('draft_id',draft_id)
  result=[]
- for row in db.execute('SELECT * FROM followups WHERE '+column+'=? ORDER BY id',(value,)):
-  item=dict(row);item['source_ids']=json.loads(item['source_ids']);item['proposal']=json.loads(item['proposal']) if item['proposal'] else None
+ for row in db.execute("SELECT * FROM followups WHERE "+column+"=? AND qa_archived=0"+(" AND (qa_kind!='expected' OR qa_included=1)" if request_id is not None else '')+" ORDER BY id",(value,)):
+  item=dict(row);item['answer_source_ids']=json.loads(item['answer_source_ids']);item['qa_references']=json.loads(item['qa_references']);item['qa_documents']=json.loads(item['qa_documents']);item['source_ids']=json.loads(item['source_ids']);item['proposal']=json.loads(item['proposal']) if item['proposal'] else None
   item['request_completed']=bool(item['request_id'] and db.execute("SELECT 1 FROM handover_requests WHERE id=? AND state='completed'",(item['request_id'],)).fetchone())
   item['events']=[dict(e)|{'payload':json.loads(e['payload'])} for e in db.execute('SELECT actor_id,action,payload,created FROM followup_events WHERE followup_id=? ORDER BY id',(item['id'],))];result.append(item)
  return result
 
 def snapshot(db,draft_id):
- questions=question_rows(db,draft_id=draft_id)
+ questions=[q for q in question_rows(db,draft_id=draft_id) if q['qa_kind']!='expected' or q['qa_included']]
  return {'questions':questions,'unresolved':sum(q['state'] in ('open','deferred') for q in questions)}
 
 def event(db,q,user,action,payload):db.execute('INSERT INTO followup_events(followup_id,actor_id,action,payload) VALUES(?,?,?,?)',(q,user['id'],action,json.dumps(payload,ensure_ascii=False)))
@@ -37,6 +37,8 @@ def documents(db,draft,workspace):
 def handle(handler,factory,method):
  path=urlsplit(handler.path).path
  if not path.startswith('/api/journey/'):return False
+ if path.startswith('/api/journey/qa/'):
+  return __import__('journey_qa').handle(handler,factory,method)
  try:
   with closing(factory()) as db:
    user=auth_control.identity(handler,db);body=auth_control.read_json(handler,2*1024*1024) if method=='POST' else {k:v[0] for k,v in parse_qs(urlsplit(handler.path).query).items()}
@@ -146,7 +148,7 @@ def handle(handler,factory,method):
 
 def backup_extension(db,workspace):
  if not db.execute("SELECT 1 FROM sqlite_master WHERE name='followup_events'").fetchone():return None
- questions=[dict(r) for r in db.execute('SELECT id,origin,reason,source_ids,application FROM followups WHERE workspace_id=?',(workspace,))]
+ questions=[dict(r) for r in db.execute('SELECT id,origin,reason,source_ids,application,qa_kind,recommended_answer,answer_source_ids,answer_supported,qa_included,qa_archived,qa_references,qa_documents,qa_mode,qa_model FROM followups WHERE workspace_id=?',(workspace,))]
  events=[dict(r) for r in db.execute('SELECT e.followup_id,e.action,e.payload,e.created FROM followup_events e JOIN followups q ON q.id=e.followup_id WHERE q.workspace_id=? ORDER BY e.id',(workspace,))]
  return {'version':1,'questions':questions,'events':events}
 
@@ -162,6 +164,18 @@ def restore_extension(db,extension,question_map,document_map,user):
   if not isinstance(ids,list):raise ValueError('질문 출처 백업 형식을 확인하세요.')
   ids=[mapped for source in ids if (mapped:=remap(source))]
   db.execute("UPDATE followups SET origin=?,reason=?,source_ids=?,application='restored',proposal=NULL,request_id=NULL WHERE id=?",(q['origin'],q['reason'],json.dumps(ids),question_map[q['id']]))
+  if q.get('qa_kind')=='expected':
+   recommendation=q.get('recommended_answer','');mode=q.get('qa_mode','unknown');model=q.get('qa_model','')
+   if not isinstance(recommendation,str) or len(recommendation)>8000 or mode not in ('live','mock','unknown','manual') or not isinstance(model,str) or len(model)>200:raise ValueError('예상 Q&A 백업 형식을 확인하세요.')
+   answer_ids=json.loads(q.get('answer_source_ids','[]'));documents=json.loads(q.get('qa_documents','[]'));refs=json.loads(q.get('qa_references','{}'))
+   if not isinstance(answer_ids,list) or not isinstance(documents,list) or not isinstance(refs,dict):raise ValueError('예상 Q&A 근거 백업을 확인하세요.')
+   mapped_refs={}
+   for key,ref in refs.items():
+    new_key=remap(key)
+    if new_key and isinstance(ref,dict):mapped_refs[new_key]={**ref,'document_id':int(new_key.split('-')[0][1:])}
+   mapped_answers=[key for item in answer_ids if (key:=remap(item)) and key in mapped_refs]
+   mapped_documents=[document_map[i] for i in documents if type(i) is int and i in document_map]
+   db.execute("UPDATE followups SET qa_kind='expected',recommended_answer=?,answer_source_ids=?,answer_supported=?,qa_included=?,qa_archived=?,qa_references=?,qa_documents=?,qa_mode=?,qa_model=?,qa_revision=0 WHERE id=?",(recommendation,json.dumps(mapped_answers),int(bool(q.get('answer_supported')) and bool(mapped_answers)),int(bool(q.get('qa_included',1))),int(bool(q.get('qa_archived',0))),json.dumps(mapped_refs,ensure_ascii=False),json.dumps(mapped_documents),mode,model,question_map[q['id']]))
  for e in extension['events']:
   if not isinstance(e,dict) or e.get('followup_id') not in question_map or not isinstance(e.get('action'),str) or len(e['action'])>200 or not isinstance(e.get('payload'),str) or len(e['payload'])>100000 or not isinstance(e.get('created'),str) or len(e['created'])>100:raise ValueError('질문 변경 이력 백업을 확인하세요.')
   payload=json.loads(e['payload'])

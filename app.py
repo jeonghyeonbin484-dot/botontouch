@@ -215,6 +215,7 @@ class Handler(BaseHTTPRequestHandler):
             with closing(connect()) as db:
                 draft['workspace'] = dict(db.execute('SELECT * FROM workspaces WHERE id=?', (workspace_id,)).fetchone())
                 draft['source_changes'] = source_changes(db, draft, workspace_id)
+                draft['gap_review'] = handover_journey.snapshot(db,int(export_match[1]))
                 draft['tasks'] = [dict(task) for task in db.execute("SELECT * FROM tasks WHERE workspace_id=? AND deleted=0 ORDER BY done, CASE WHEN due_date='' THEN 1 ELSE 0 END, due_date, id DESC", (workspace_id,))]
             extension = export_match[2] or 'docx'
             if extension in ('hwpx','html','md'):

@@ -71,6 +71,7 @@ def generate(documents,question=None,expected_questions=False,document_check=Fal
  if gap_apply_context is not None:
   draft=gap_apply_context['draft'];return {**common,'target_index':0,'text':draft['items'][0]['text']+'\n[사용자 답변 · 테스트 반영안] '+gap_apply_context['answer']}
  if gap_context is not None:
+  if gap_context.get('mode')=='expected_qa':return {**common,'summary':'테스트 응답 · 실제 AI 예상 질문이 아닙니다.','questions':[{'question':'가상 업무는 언제 확인하나요?','reason':'테스트 예시 질문','target_index':0,'source_ids':[first],'recommended_answer':'추가 확인 필요 · 테스트 추천 답변입니다.','answer_source_ids':[],'supported':False}]}
   return {**common,'summary':'테스트 화면 예시입니다. 실제 AI가 누락을 판단한 결과가 아닙니다.','questions':[{'question':'가상 업무의 다음 처리 일정은 언제인가요?','reason':'테스트 질문 예시이며 실제 의미 분석이 아닙니다.','target_index':0,'source_ids':[first]}]}
  if document_check:return {**common,'summary':'테스트 응답입니다. 실제 자료의 누락·충돌을 판단하지 않았습니다.','findings':[]}
  if expected_questions:

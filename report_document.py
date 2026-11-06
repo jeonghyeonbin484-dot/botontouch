@@ -53,6 +53,11 @@ def build(draft):
    p('출처: '+', '.join(dict.fromkeys(marks)) if marks else '출처 없음 · 전임자 확인 필요','note')
   if not groups[i] and i!=6:p('전임자 확인 필요')
   if i==4:
+   expected=[q for q in (draft.get('gap_review') or {}).get('questions',[]) if q.get('qa_kind')=='expected' and q.get('qa_included',True) and not q.get('qa_archived')]
+   if expected:p('후임자 예상 질문·답변')
+   for q in expected:
+    p('질문: '+clean(q.get('question')))
+    p(('인계자 확인 답변: ' if q.get('reply') else 'AI 추천 답변 · 확인 필요: ')+clean(q.get('reply') or q.get('recommended_answer') or '추가 확인 필요'))
    for q in (draft.get('recipient_review') or {}).get('followups',[]):
     p('추가 질문: '+clean(q.get('question')))
     p('보완 답변: '+clean(q.get('reply')) if q.get('reply') else '미해결 · 전임자 확인 필요')
