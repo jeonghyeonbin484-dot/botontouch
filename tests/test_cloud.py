@@ -34,7 +34,7 @@ class Transaction:
 class Fixture:
  def start(self):
   self.memory=MemoryDatabase();self.driver=patch.dict(sys.modules,{'psycopg':types.SimpleNamespace(connect=self.memory.connect)});self.driver.start()
-  self.env=patch.dict(os.environ,{'DATABASE_URL':'postgresql://fictional.invalid/test','BATON_DEMO_PASSWORD':PASSWORD,'BATON_CLOUD_LOCAL_TEST':'1'});self.env.start()
+  self.env=patch.dict(os.environ,{'DATABASE_URL':'postgresql://fictional.invalid/test','BATON_DEMO_PASSWORD':PASSWORD,'BATON_CLOUD_LOCAL_TEST':'1','AI_MODE':'mock','BATON_STAFF_AI_MODE':'mock'});self.env.start()
   self.server=app.LocalServer(('127.0.0.1',0),handler);self.portenv=patch.dict(os.environ,{'BATON_PORT':str(self.server.server_port)});self.portenv.start()
   threading.Thread(target=self.server.serve_forever,daemon=True).start();self.url='http://127.0.0.1:'+str(self.server.server_port);return self
  def stop(self):self.server.shutdown();self.server.server_close();self.portenv.stop();self.env.stop();self.driver.stop()

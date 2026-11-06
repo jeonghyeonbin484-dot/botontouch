@@ -67,6 +67,8 @@ def review_status(db, draft_id, workspace):
 
 
 def export_response(handler, payload, extension, filename):
+    if extension in ('hwpx','html','md'):
+        return __import__('report_export').respond(handler,payload,extension,filename)
     raw = export_hwpx.build(payload) if extension == 'hwpx' else export_docx.build(payload)
     handler.send_response(200)
     handler.send_header('Content-Type', 'application/hwp+zip' if extension == 'hwpx' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
@@ -234,7 +236,7 @@ def handle(handler,factory,method,workspace,source_changes):
                     if not isinstance(ids,list) or not 1<=len(ids)<=20 or any(type(i) is not int for i in ids):raise ValueError('점검할 자료를 1~20개 선택해 주세요.')
                     docs=db.execute('SELECT * FROM documents WHERE workspace_id=? AND deleted=0 AND id IN ('+','.join('?' for _ in ids)+')',[workspace,*ids]).fetchall()
                     if len(docs)!=len(set(ids)):raise ValueError('점검할 자료가 없거나 다른 묶음에 속해 있습니다.')
-                    result=ai_draft.generate(docs,document_check=True)
+                    result=ai_draft.generate(docs,document_check=True,actor=handler.user)
                     result['documents']=[{'id':d['id'],'name':d['name']} for d in docs]
                     cursor=db.execute('INSERT INTO document_checks(workspace_id,payload,actor) VALUES(?,?,?)',(workspace,json.dumps(result,ensure_ascii=False),actor));db.commit()
                     handler.respond(201,{'id':cursor.lastrowid,**result});return True

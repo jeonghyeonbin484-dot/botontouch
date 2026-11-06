@@ -52,6 +52,7 @@ def connect():
     auth_control.ensure(db)
     handover_workflow.ensure(db)
     handover_requests.ensure(db)
+    __import__('handover_chat').ensure(db)
     handover_journey.ensure(db)
     for table in ('documents', 'drafts', 'questions'):
         if 'workspace_id' not in {r['name'] for r in db.execute(f'PRAGMA table_info({table})')}:
@@ -176,13 +177,15 @@ class Handler(BaseHTTPRequestHandler):
             raw=(ROOT/'web'/page).read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
         if auth_control.handle(self, connect, 'GET'):
             return
+        if __import__('handover_chat').handle(self, connect, 'GET'):
+            return
         if handover_requests.handle(self, connect, 'GET', source_changes):
             return
         if handover_journey.handle(self, connect, 'GET'):
             return
-        if __import__('evidence_api').handle(self,connect,'GET'):
-            return
         if __import__('gemini_verification').handle(self,connect,'GET'):
+            return
+        if __import__('evidence_api').handle(self,connect,'GET'):
             return
         try:
             with closing(connect()) as db:
@@ -201,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.respond(getattr(error,'http_status',400), {'error': str(error)})
         if handover_workflow.handle(self, connect, 'GET', workspace_id, source_changes):
             return
-        export_match = re.fullmatch(r'/api/drafts/(\d+)/export(?:\.(hwpx))?', self.path)
+        export_match = re.fullmatch(r'/api/drafts/(\d+)/export(?:\.(hwpx|html|md))?', urlsplit(self.path).path)
         if export_match:
             with closing(connect()) as db:
                 row = db.execute('SELECT payload FROM drafts WHERE id=? AND workspace_id=? AND deleted=0', (int(export_match[1]), workspace_id)).fetchone()
@@ -212,7 +215,12 @@ class Handler(BaseHTTPRequestHandler):
                 draft['workspace'] = dict(db.execute('SELECT * FROM workspaces WHERE id=?', (workspace_id,)).fetchone())
                 draft['source_changes'] = source_changes(db, draft, workspace_id)
                 draft['tasks'] = [dict(task) for task in db.execute("SELECT * FROM tasks WHERE workspace_id=? AND deleted=0 ORDER BY done, CASE WHEN due_date='' THEN 1 ELSE 0 END, due_date, id DESC", (workspace_id,))]
-            extension = 'hwpx' if export_match[2] else 'docx'
+            extension = export_match[2] or 'docx'
+            if extension in ('hwpx','html','md'):
+                try:
+                    return __import__('report_export').respond(self,draft,extension,draft.get('title') or '인수인계서')
+                except auth_control.AccessError as error:
+                    return self.respond(error.status,{'error':error.message})
             try:
                 raw = export_hwpx.build(draft) if extension == 'hwpx' else export_docx.build(draft)
             except ValueError as error:
@@ -289,15 +297,19 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get('Origin')
         if origin and origin not in server_settings.allowed_origins():
             return self.respond(403, {'error': '허용되지 않은 요청입니다.'})
+        if __import__('organization_ingest').handle(self,connect):
+            return
         if auth_control.handle(self, connect, 'POST'):
+            return
+        if __import__('handover_chat').handle(self, connect, 'POST'):
             return
         if handover_requests.handle(self, connect, 'POST', source_changes):
             return
         if handover_journey.handle(self, connect, 'POST'):
             return
-        if __import__('evidence_api').handle(self,connect,'POST'):
-            return
         if __import__('gemini_verification').handle(self,connect,'POST'):
+            return
+        if __import__('evidence_api').handle(self,connect,'POST'):
             return
         try:
             with closing(connect()) as db:
@@ -406,7 +418,7 @@ class Handler(BaseHTTPRequestHandler):
                     if len(docs) != len(set(ids)):
                         raise ValueError('선택한 자료를 찾지 못했습니다.')
                     if self.path.endswith('/suggest'):
-                        result = ai_draft.generate(docs, expected_questions=True)
+                        result = ai_draft.generate(docs, expected_questions=True,actor=self.user)
                         result['documents'] = [{'id': doc['id'], 'name': doc['name']} for doc in docs]
                         with closing(connect()) as db:
                             cursor = db.execute('INSERT INTO suggestions(workspace_id,payload) VALUES(?,?)', (workspace_id, json.dumps(result, ensure_ascii=False)))
@@ -452,13 +464,13 @@ class Handler(BaseHTTPRequestHandler):
                     changes = source_changes(db, previous, workspace_id)
                 return self.respond(200, {'id': body['id'], **previous, 'edit_token': handover_workflow.fingerprint(previous), 'source_changes': changes})
             except (ValueError, TypeError) as error:
-                return self.respond(getattr(error,'http_status',400), {'error': str(error)})
+                return self.respond(getattr(error,'http_status',400), __import__('ai_diagnostics').payload(error, self.path.rsplit('/',1)[-1], getattr(self,'user',None)))
         if self.path != '/api/documents':
             return self.respond(404, {'error': '페이지가 없습니다.'})
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if size <= 0 or size > MAX_FILE:
-                raise ValueError('파일은 0바이트 초과, 4MB 이하여야 합니다.')
+                raise ValueError('파일은 0바이트 초과, 10MB 이하여야 합니다.')
             name = self.headers.get('X-File-Name', '')
             from urllib.parse import unquote
             name = Path(unquote(name)).name
@@ -486,6 +498,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     server_settings.validate()
+    __import__('report_document').register_local_fonts()
     connect().close()
     print('바통터치 서버 시작: '+(server_settings.public_origin() or 'http://'+server_settings.host()+':'+str(server_settings.port())),flush=True)
     try:

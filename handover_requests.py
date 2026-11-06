@@ -400,13 +400,14 @@ def handle(handler,factory,method,source_changes=None):
                     f=db.execute('SELECT name,raw FROM request_files WHERE id=? AND request_id=? AND revision=?',(int(file_match[2]),row['id'],row['revision'])).fetchone()
                     if not f:fail(404,'요청에 연결된 원본 파일이 없습니다.')
                     handler.send_response(200);handler.send_header('Content-Type','application/octet-stream');handler.send_header('X-Content-Type-Options','nosniff');handler.send_header('Cache-Control','no-store');handler.send_header('Content-Disposition',"attachment; filename=handover-source; filename*=UTF-8''"+quote(f['name'],safe=''));handler.send_header('Content-Length',str(len(f['raw'])));handler.end_headers();handler.wfile.write(f['raw']);return True
-                match=re.fullmatch(r'/api/requests/(\d+)(?:/export\.(hwpx|docx))?',path)
+                match=re.fullmatch(r'/api/requests/(\d+)(?:/export\.(hwpx|docx|html|md))?',path)
                 if match:
                     row=request_row(db,user,int(match[1]))
                     if match[2]:
                         payload=json.loads(row['payload'])
                         if row['version_id']:
                             version=db.execute('SELECT payload FROM draft_versions WHERE id=?',(row['version_id'],)).fetchone();payload=json.loads(version[0])
+                        payload['handover_parties']={'sender':json.loads(row['sender_snapshot']),'recipient':json.loads(row['recipient_snapshot'])}
                         workflow.export_response(handler,payload,match[2],'인수인계요청_'+str(row['id']))
                     else:handler.respond(200,detail(db,user,row['id']))
                     return True

@@ -1,4 +1,4 @@
-"""Draft-aware missing information checks and request-scoped conversation. No automatic approval."""
+﻿"""Draft-aware missing information checks and request-scoped conversation. No automatic approval."""
 import copy,json,re,sqlite3
 from contextlib import closing
 from urllib.parse import urlsplit,parse_qs
@@ -104,7 +104,7 @@ def handle(handler,factory,method):
     docs=documents(db,draft,workspace)
     if not docs:raise ValueError('출처가 연결된 업무자료를 먼저 등록하세요.')
     existing=question_rows(db,draft_id=draft_id);baseline=workflow.fingerprint(draft)
-    result=ai_draft.generate(docs,gap_context={'draft':{'title':draft['title'],'items':draft['items']},'existing_questions':[{'question':q['question'],'answer':q['reply'],'state':q['state']} for q in existing]})
+    result=ai_draft.generate(docs,actor=user,gap_context={'draft':{'title':draft['title'],'items':draft['items']},'existing_questions':[{'question':q['question'],'answer':q['reply'],'state':q['state']} for q in existing]})
     db.execute('BEGIN IMMEDIATE')
     if workflow.fingerprint(workflow.load_draft(db,draft_id,workspace))!=baseline:raise ValueError('점검 중 문서가 변경됐습니다. 기존 작성 내용은 유지되며 다시 점검하세요.')
     known={re.sub(r'\s+','',q['question']).casefold() for q in existing};added=0
@@ -124,7 +124,7 @@ def handle(handler,factory,method):
     db.execute("UPDATE followups SET reply=?,state=?,reply_actor=?,proposal=NULL,application='none',updated=CURRENT_TIMESTAMP WHERE id=?",(answer,status,user['username'],q['id']));db.commit();handler.respond(200,{'saved':True});return True
    if path=='/api/journey/propose':
     if q['state']!='resolved' or not q['reply']:raise ValueError('답변을 먼저 저장하세요.')
-    baseline=workflow.fingerprint(draft);answer_hash=workflow.fingerprint(q['reply']);result=ai_draft.generate(documents(db,draft,workspace),gap_apply_context={'draft':{'title':draft['title'],'items':draft['items']},'question':q['question'],'answer':q['reply']})
+    baseline=workflow.fingerprint(draft);answer_hash=workflow.fingerprint(q['reply']);result=ai_draft.generate(documents(db,draft,workspace),actor=user,gap_apply_context={'draft':{'title':draft['title'],'items':draft['items']},'question':q['question'],'answer':q['reply']})
     db.execute('BEGIN IMMEDIATE');current=db.execute('SELECT reply FROM followups WHERE id=?',(q['id'],)).fetchone()[0]
     if workflow.fingerprint(workflow.load_draft(db,draft_id,workspace))!=baseline or workflow.fingerprint(current)!=answer_hash:raise ValueError('생성 중 문서나 답변이 변경됐습니다. 다시 확인하세요.')
     result.update(baseline=baseline,answer_hash=answer_hash);db.execute("UPDATE followups SET proposal=?,application='proposed' WHERE id=?",(json.dumps(result,ensure_ascii=False),q['id']));event(db,q['id'],user,'반영안 제안',result);db.commit();handler.respond(200,result);return True

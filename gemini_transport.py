@@ -1,15 +1,15 @@
 """Gemini REST transport: bounded 503-only retries, redacted diagnostics, no fallback."""
 import json,time,random,re,urllib.request,urllib.error
 class GeminiTransportError(ValueError):
- def __init__(self,message,upstream_status=None,provider_error=None,attempts=None):
-  super().__init__(message);self.upstream_status=upstream_status;self.http_status=503 if upstream_status==503 else 502;self.provider_error=provider_error or {};self.attempts=attempts or []
+ def __init__(self,message,upstream_status=None,provider_error=None,attempts=None,error_code=None):
+  super().__init__(message);self.error_code=error_code;self.upstream_status=upstream_status;self.http_status=504 if error_code=='AI_TIMEOUT' else 503 if upstream_status==503 else 502;self.provider_error=provider_error or {};self.attempts=attempts or []
 
 def generate_content(key,model,payload,timeout=60,max_retries=2):
  if not key or not re.fullmatch(r'[a-zA-Z0-9._-]+',model or ''):raise ValueError('Gemini 키 또는 모델 설정을 확인하세요.')
  deadline=time.monotonic()+timeout;attempts=[]
  for index in range(max(0,min(int(max_retries),2))+1):
   remaining=deadline-time.monotonic()
-  if remaining<=0:raise GeminiTransportError('AI 요청 제한시간(60초)을 초과했습니다. 입력은 유지됩니다.',attempts=attempts)
+  if remaining<=0:raise GeminiTransportError('AI 요청 제한시간(60초)을 초과했습니다. 입력은 유지됩니다.',attempts=attempts,error_code='AI_TIMEOUT')
   start=time.monotonic();request=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST')
   try:
    with urllib.request.urlopen(request,timeout=remaining) as response:
@@ -26,4 +26,6 @@ def generate_content(key,model,payload,timeout=60,max_retries=2):
     if deadline-time.monotonic()>delay+1:time.sleep(delay);continue
    message='AI 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.' if error.code==503 else 'Gemini 요청 실패: HTTP '+str(error.code)+' / '+str(safe.get('status','오류'))
    raise GeminiTransportError(message,error.code,safe,attempts) from None
-  except (TimeoutError,urllib.error.URLError):raise GeminiTransportError('Gemini 연결 또는 응답 제한시간을 확인하세요. 자동으로 재시도하지 않았습니다.',attempts=attempts) from None
+  except (TimeoutError,urllib.error.URLError) as error:
+   timed_out=isinstance(error,TimeoutError) or isinstance(getattr(error,'reason',None),TimeoutError)
+   raise GeminiTransportError('Gemini 응답 제한시간(60초)을 초과했습니다. 입력 내용은 유지됩니다.' if timed_out else 'Gemini에 연결하지 못했습니다. 서버의 DNS·프록시·HTTPS 연결을 확인하세요. 입력 내용은 유지됩니다.',attempts=attempts,error_code='AI_TIMEOUT' if timed_out else 'AI_NETWORK_ERROR') from None

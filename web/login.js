@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);let setup=false,requesting=false;
-function show(view){for(const name of ['login','password','reset'])$(name+'-view').hidden=name!==view;$('auth-message').hidden=true;}
+function show(view){for(const name of ['login','password','reset','activation'])$(name+'-view').hidden=name!==view;$('auth-message').hidden=true;}
 function message(text,error=false){$('auth-message').textContent=text;$('auth-message').className='message'+(error?' error':'');$('auth-message').hidden=false;}
 async function api(path,body){const response=await fetch(path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await response.json();if(!response.ok)throw Error(data.error||'요청을 처리하지 못했습니다.');return data;}
 async function job(button,work){if(requesting)return;requesting=true;$(button).disabled=true;message('처리 중입니다. 잠시만 기다려 주세요.');try{await work();}catch(e){message(e.message||'서버에 연결할 수 없습니다.',true);}finally{requesting=false;$(button).disabled=false;}}
@@ -11,3 +11,7 @@ $('password-logout').onclick=()=>void job('password-submit',async()=>{await api(
 $('show-reset').onclick=()=>{show('reset');$('reset-username').value=$('auth-username').value;};$('reset-cancel').onclick=()=>show('login');
 $('reset-form').onsubmit=e=>{e.preventDefault();void job('reset-submit',async()=>{const result=await api('/api/auth/reset-request',{username:$('reset-username').value.trim()});message(result.message);});};
 window.addEventListener('pageshow',e=>{if(e.persisted)void initialize();});void initialize();
+
+$('show-activation').onclick=()=>{show('activation');$('activation-username').value=$('auth-username').value.toLowerCase();};$('activation-cancel').onclick=()=>show('login');
+$('activation-form').onsubmit=e=>{e.preventDefault();void job('activation-submit',async()=>{await api('/api/auth/activate',{username:$('activation-username').value.trim().toLowerCase(),activation_code:$('activation-code').value,new_password:$('activation-password').value,confirmation:$('activation-confirmation').value});for(const id of ['activation-code','activation-password','activation-confirmation'])$(id).value='';location.replace('/');});};
+$('auth-username').addEventListener('input',e=>{e.target.value=e.target.value.toLowerCase();});

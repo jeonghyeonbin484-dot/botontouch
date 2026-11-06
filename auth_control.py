@@ -173,6 +173,7 @@ def verify_limited(password,row):
 
 
 def handle(handler,factory,method):
+    if __import__('account_activation').handle(handler,factory,method):return True
     path=handler.path.split('?')[0]
     if not path.startswith('/api/auth/'):return False
     try:

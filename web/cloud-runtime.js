@@ -1,0 +1,5 @@
+﻿// 실제 AI·모의 응답은 API의 mode를 기준으로 구분한다.
+window.staffAiLive=false;let cloudCapabilities=null;
+const cloudInitialize=initialize;initialize=async function(){cloudCapabilities=await api('/api/system/capabilities');window.staffAiLive=cloudCapabilities.ai_mode==='live';await cloudInitialize();$('ai-state').textContent=cloudCapabilities.ai_mode==='mock'?'모의 AI 응답 · 외부 전송 없음':cloudCapabilities.ai_scope==='approved-materials'?(cloudCapabilities.ai_transmission_ready?'Google Gemini — 실제 AI · 승인 자료 전용':'실제 AI · 자료 전송 승인 설정 필요'):'Google Gemini — 실제 AI · 검증된 가상자료 한정';document.querySelector('.sidebar-footer small').textContent='공유 서버 DB에 저장';const footer=document.querySelector('.footer');if(footer)footer.textContent='바통터치 · 공유 서버 DB에 저장';};
+const cloudOpenDraft=openDraft;openDraft=function(d){cloudOpenDraft(d);$('ai-state').textContent=d?.mode==='mock'?'모의 AI 응답 · 실제 AI 아님':d?.mode==='live'?'Google Gemini — 실제 AI · '+d.model:'저장된 문서 · 생성 정보 확인 필요';};
+const cloudAnswer=renderAnswer;renderAnswer=function(r){cloudAnswer(r);$('answer').prepend(node('p','badge',r.mode==='mock'?'모의 AI 응답 · 실제 AI 아님':r.mode==='live'?'Google Gemini — 실제 AI':'저장된 답변'));};

@@ -59,7 +59,7 @@ def database_request():
  # Credentials must never appear in exception responses or logs.
  with psycopg.connect(url,connect_timeout=10,autocommit=False) as pg:
   pg.execute("SET LOCAL lock_timeout='15s'")
-  pg.execute("SET LOCAL statement_timeout='50s'")
+  pg.execute("SET LOCAL statement_timeout='85s'")
   pg.execute('CREATE TABLE IF NOT EXISTS baton_demo_state (id integer PRIMARY KEY CHECK(id=1), payload bytea, updated timestamptz DEFAULT now())')
   pg.execute('INSERT INTO baton_demo_state(id) VALUES(1) ON CONFLICT DO NOTHING')
   row=pg.execute('SELECT payload FROM baton_demo_state WHERE id=1 FOR UPDATE').fetchone()
@@ -71,8 +71,11 @@ def database_request():
     file.write_bytes(before)
    token=cloud_context.current_data.set(root)
    try:
-    if not before:seed()
-    demo_search_fixtures()
+    if os.environ.get('BATON_CLOUD_LOCAL_TEST')=='1':
+     if not before:seed()
+     demo_search_fixtures()
+    elif not before:
+     with closing(__import__('app').connect()) as initial:initial.commit()
     yield
     after=file.read_bytes()
     if len(after)>MAX_DATABASE_BYTES:raise StorageUnavailable('공개 테스트의 합계 저장 한도(20MB)를 초과했습니다. 입력은 화면에 유지됩니다.')

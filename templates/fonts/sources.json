@@ -1,0 +1,22 @@
+{
+  "Pretendard-ExtraBold.woff2": {
+    "source": "https://raw.githubusercontent.com/orioncactus/pretendard/v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-ExtraBold.woff2",
+    "sha256": "dd7c1e156f508eb962acc7a33a7a1896d1e0b71e11156fad96e731689ceb6dc3",
+    "bytes": 793540
+  },
+  "OFL.txt": {
+    "source": "https://raw.githubusercontent.com/orioncactus/pretendard/v1.3.9/LICENSE",
+    "sha256": "d31ddd9f2bed32fd7e302a205cf2380ba0de6529152d239ef99cfb6f261bfc04",
+    "bytes": 4418
+  },
+  "Pretendard-ExtraBold.ttf": {
+    "source": "https://raw.githubusercontent.com/orioncactus/pretendard/v1.3.9/packages/pretendard/dist/public/static/alternative/Pretendard-ExtraBold.ttf",
+    "bytes": 2669648,
+    "sha256": "eedbd2877218242323bdff816684f7f5c325e54ae820d5b78eec9a5e5c7edef6"
+  },
+  "Pretendard-SemiBold.ttf": {
+    "source": "https://raw.githubusercontent.com/orioncactus/pretendard/v1.3.9/packages/pretendard/dist/public/static/alternative/Pretendard-SemiBold.ttf",
+    "bytes": 2671468,
+    "sha256": "5e1c548732af70873103066c16e1369b9a8a871f0b38c321a1d5bc73e43cea2d"
+  }
+}
