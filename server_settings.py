@@ -18,4 +18,4 @@ def allowed_origins():
 def validate():
  if public_origin() and (urlsplit(public_origin()).scheme!='https' or urlsplit(public_origin()).path):raise ValueError('공개 주소는 HTTPS 원점으로 설정하세요.')
 
-def public_demo():return False
+def public_demo():return os.environ.get('BATON_CLOUD_LOCAL_TEST')=='1'

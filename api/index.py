@@ -7,7 +7,14 @@ from cloud_store import database_request,StorageUnavailable
 
 class handler(app.Handler):
  def log_message(self,*args):pass
- def do_GET(self):self.dispatch('GET')
+ def do_GET(self):
+  route=self.path.split('?')[0]
+  if any(part.startswith('.') for part in route.split('/') if part) or route.endswith(('.py','.sqlite3','.json','.env')):return self.simple(404,{'error':'페이지가 없습니다.'})
+  if route=='/login':
+   raw=(Path(__file__).resolve().parents[1]/'web/login.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(raw)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(raw);return
+  if not route.startswith('/api/') and 'baton_session=' not in self.headers.get('Cookie',''):
+   self.send_response(303);self.send_header('Location','/login');self.send_header('Cache-Control','no-store');self.end_headers();return
+  self.dispatch('GET')
  def do_POST(self):self.dispatch('POST')
  def dispatch(self,method):
   if self.path.split('?')[0] in ('/api/system/capabilities','/api/demo/status'):

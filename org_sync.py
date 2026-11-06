@@ -63,7 +63,7 @@ def live_lookup(db,user,dept,query):
     from collections import Counter
     duplicates=Counter((i['name'],i['position']) for i in output)
     for item in output:item['duplicate_count']=duplicates[(item['name'],item['position'])]
-    output.sort(key=lambda i:(i['name'],i['position'],i['employee_id']))
+    output.sort(key=lambda i:(__import__('staff_order').rank(i['position']),i['name'],i['position'],i['employee_id']))
     audit(db,user,'실시간 직원 조회',dept,str(len(items)));db.commit()
     return dict(items=output[(page-1)*50:page*50],total=len(output),page=page,page_size=50,source='org_api')
 

@@ -42,6 +42,7 @@ def connect():
     handover_requests.backup_before_migration(DATA / 'library.sqlite3')
     db = sqlite3.connect(DATA / 'library.sqlite3',timeout=30)
     db.row_factory = sqlite3.Row
+    db.create_function('staff_rank',1,__import__('staff_order').rank,deterministic=True)
     db.execute('CREATE TABLE IF NOT EXISTS documents (id INTEGER PRIMARY KEY, name TEXT, content TEXT, sources TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP)')
     db.execute('CREATE TABLE IF NOT EXISTS drafts (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP)')
     db.execute('CREATE TABLE IF NOT EXISTS questions (id INTEGER PRIMARY KEY, payload TEXT NOT NULL, created TEXT DEFAULT CURRENT_TIMESTAMP)')
