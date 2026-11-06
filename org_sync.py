@@ -129,6 +129,8 @@ def run(factory,user,employees=False):
     return dict(run_id=runid,report=report)
 
 def start(factory,user,employees=False):
+    if __import__('os').environ.get('VERCEL'):
+        raise ValueError('전체 조직도 정기 동기화는 승인된 내부 서버에서 tools/sync_internal_organization.py로 실행하세요. Vercel 요청 종료 뒤 백그라운드 작업을 성공한 것처럼 표시하지 않습니다. 부서별 직원 조회와 동기화된 전체 직원 검색은 그대로 사용할 수 있습니다.')
     with closing(factory()) as db:
         if db.execute("SELECT 1 FROM org_sync_runs WHERE state='running'").fetchone():raise ValueError('이미 조직도 동기화가 진행 중입니다.')
     if not _lock.acquire(blocking=False):raise ValueError('이미 조직도 동기화가 진행 중입니다.')
