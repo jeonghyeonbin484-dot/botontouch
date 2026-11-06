@@ -56,7 +56,61 @@ def validate_file(name,raw,limit):
                 if expected not in z.namelist(): raise ValueError('파일 내용과 확장자가 일치하지 않습니다.')
         except zipfile.BadZipFile: raise ValueError('문서 압축 구조가 손상되었습니다.') from None
 
+def notification_snapshot(db,user,after=-1):
+    import handover_requests
+    handover_requests.bind_pending_requests(db,user)
+    uid=user['id']
+    scope="(? IN (r.sender_account,r.recipient_account)) AND m.recipient_employee=r.recipient_employee"
+    high=db.execute('SELECT coalesce(max(m.id),0) FROM request_chat_messages m JOIN handover_requests r ON r.id=m.request_id WHERE '+scope,(uid,)).fetchone()[0]
+    rows=db.execute("SELECT m.request_id,count(*) AS count,max(m.id) AS last_id,json_extract(CASE WHEN r.sender_account=? THEN r.recipient_snapshot ELSE r.sender_snapshot END,'$.name') AS peer_name,json_extract(r.payload,'$.title') AS title FROM request_chat_messages m JOIN handover_requests r ON r.id=m.request_id LEFT JOIN request_chat_reads s ON s.request_id=r.id AND s.user_id=? WHERE "+scope+" AND m.sender_id!=? AND m.id>coalesce(s.last_id,0) GROUP BY m.request_id ORDER BY max(m.id) DESC",(uid,uid,uid,uid)).fetchall()
+    notes=[]
+    if after>=0:
+        notes=[dict(row) for row in db.execute("SELECT m.id,m.request_id,m.created,CASE WHEN m.body='' THEN '첨부파일' ELSE substr(m.body,1,120) END AS preview,json_extract(r.payload,'$.title') AS title,json_extract(CASE WHEN m.sender_id=r.sender_account THEN r.sender_snapshot ELSE r.recipient_snapshot END,'$.name') AS sender_name FROM request_chat_messages m JOIN handover_requests r ON r.id=m.request_id LEFT JOIN request_chat_reads s ON s.request_id=r.id AND s.user_id=? WHERE "+scope+" AND m.sender_id!=? AND m.id>? AND m.id<=? AND m.id>coalesce(s.last_id,0) ORDER BY m.id LIMIT 50",(uid,uid,uid,after,high)).fetchall()]
+    cursor=notes[-1]['id'] if len(notes)==50 else max(high,after)
+    return {'user_id':uid,'cursor':cursor,'notifications':notes,'total':sum(row['count'] for row in rows),'rooms':[dict(row) for row in rows]}
+
+
+def notification_feed(handler,factory,method):
+    path=urlsplit(handler.path).path
+    if path not in ('/api/chat/notifications','/api/chat/notifications/events'):return False
+    started=False
+    try:
+        if method!='GET':raise auth_control.AccessError(405,'알림 조회는 GET 요청만 허용됩니다.')
+        q=parse_qs(urlsplit(handler.path).query);raw=handler.headers.get('Last-Event-ID') or q.get('after',['-1'])[0]
+        try:after=int(raw)
+        except (ValueError,TypeError):raise ValueError('알림 확인 번호를 확인하세요.')
+        if not -1<=after<=9007199254740991:raise ValueError('알림 확인 번호를 확인하세요.')
+        buffered=bool(os.environ.get('VERCEL') or getattr(handler,'capture',False));deadline=time.monotonic()+(0 if buffered else 20);db_path=None
+        while True:
+            connection=factory() if db_path is None else sqlite3.connect('file:'+quote(db_path.replace(chr(92),'/'),safe='/:')+'?mode=rw',uri=True,timeout=5)
+            with closing(connection) as db:
+                db.row_factory=sqlite3.Row
+                if db_path is None:db_path=db.execute('PRAGMA database_list').fetchone()[2]
+                user=auth_control.identity(handler,db)
+                expected=q.get('user_id',[None])[0]
+                if expected is not None and expected!=str(user['id']):raise auth_control.AccessError(403,'로그인 계정이 변경되어 이전 알림 연결을 종료했습니다.')
+                result=notification_snapshot(db,user,after);db.commit()
+            if path=='/api/chat/notifications':handler.respond(200,result);return True
+            if not started:
+                handler.send_response(200);handler.send_header('Content-Type','text/event-stream; charset=utf-8');handler.send_header('Cache-Control','no-store');handler.send_header('X-Accel-Buffering','no');handler.send_header('Connection','close');handler.end_headers();started=True
+            handler.wfile.write(('retry: 5000\nid: '+str(result['cursor'])+'\nevent: notifications\ndata: '+json.dumps(result,ensure_ascii=False)+'\n\n').encode());handler.wfile.flush();after=result['cursor']
+            if time.monotonic()>=deadline:break
+            time.sleep(1)
+        handler.close_connection=True
+    except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+    except auth_control.AccessError as error:
+        if started:handler.wfile.write(b'event: denied\ndata: {}\n\n');handler.wfile.flush()
+        else:handler.respond(error.status,{'error':error.message})
+    except ValueError as error:
+        if not started:handler.respond(400,{'error':str(error)})
+    except sqlite3.Error:
+        if not started:handler.respond(503,{'error':'대화 알림 저장소를 확인하지 못했습니다. 잠시 후 다시 연결합니다.'})
+        handler.close_connection=True
+    return True
+
+
 def handle(handler,factory,method):
+    if notification_feed(handler,factory,method):return True
     path=urlsplit(handler.path).path
     if not path.startswith('/api/chat/'): return False
     started=False
