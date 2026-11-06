@@ -410,6 +410,7 @@ def handle(handler,factory,method,source_changes=None):
                         if row['version_id']:
                             version=db.execute('SELECT payload FROM draft_versions WHERE id=?',(row['version_id'],)).fetchone();payload=json.loads(version[0])
                         payload['handover_parties']={'sender':json.loads(row['sender_snapshot']),'recipient':json.loads(row['recipient_snapshot'])}
+                        payload['report_documents']=[{k:d[k] for k in ('id','name','revision') if k in d} for d in json.loads(row['documents'])]
                         workflow.export_response(handler,payload,match[2],'인수인계요청_'+str(row['id']))
                     else:handler.respond(200,detail(db,user,row['id']))
                     return True

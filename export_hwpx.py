@@ -49,7 +49,7 @@ def build(draft):
   if kind=='title':section.append(title)
   elif kind=='subtitle':
    p=copy.deepcopy(subtitle);text(p.find('.//{%s}tc//{%s}p'%(HP,HP)),value);section.append(p)
-  elif kind=='summary_title':
+  elif kind in ('summary_title','appendix_title'):
    p=copy.deepcopy(title_cell.find('.//{%s}p'%HP));p.set('pageBreak','1');text(p,value);section.append(p)
   elif kind=='heading':
    p=copy.deepcopy(heading);cs=cells(p)
