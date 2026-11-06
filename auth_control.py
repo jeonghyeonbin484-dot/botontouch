@@ -75,7 +75,7 @@ def identity(handler,db):
             candidate=profile(db,row);staff=candidate['employee']
             if not staff or staff['active'] and staff['department_active'] and staff['employment_status']=='active' and (not staff['saeoll_id'] or staff['saeoll_id']==row['username']) and (staff['source']!='test' or server_settings.dev_test_accounts()):handler.user=candidate
     if handler.user is None:raise AccessError(401,'로그인이 필요하거나 세션이 만료되었습니다.')
-    if handler.user['must_change_password'] and handler.path.split('?')[0] not in ('/api/auth/status','/api/auth/password','/api/auth/logout'):
+    if handler.user['must_change_password'] and handler.path.split('?')[0] not in ('/api/auth/status','/api/auth/password','/api/auth/logout','/api/auth/session-password/options','/api/auth/session-password'):
         raise AccessError(403,'최초 로그인 또는 초기화된 계정입니다. 비밀번호를 먼저 변경하세요.')
     return handler.user
 
