@@ -24,12 +24,15 @@ def valid_email(value,domains):
  return not name and address==value and bool(re.fullmatch(r'[^\s@]+@[^\s@]+',value)) and value.rsplit('@',1)[-1].lower() in domains
 
 def _send_code(email,code):
+ return _send_message(email,'바통터치 최초 비밀번호 설정 인증번호','본인확인 인증번호: '+code+'\n10분 안에 입력하세요. 본인이 요청하지 않았다면 입력하지 마세요.')
+
+def _send_message(email,subject,content):
  cfg,_,ready=configuration()
  if not ready:raise ValueError('본인확인 메일 발송 설정이 완료되지 않았습니다.')
  sender=cfg['FROM']
  if any(c in sender for c in '\r\n') or not parseaddr(sender)[1]:raise ValueError('본인확인 메일 발신자 설정을 확인하세요.')
- msg=EmailMessage();msg['From']=sender;msg['To']=email;msg['Subject']='바통터치 최초 비밀번호 설정 인증번호'
- msg.set_content('본인확인 인증번호: '+code+'\n10분 안에 입력하세요. 본인이 요청하지 않았다면 입력하지 마세요.')
+ msg=EmailMessage();msg['From']=sender;msg['To']=email;msg['Subject']=subject
+ msg.set_content(content)
  port=int(os.environ.get('BATON_SMTP_PORT','465'));context=ssl.create_default_context()
  if port==465:
   with smtplib.SMTP_SSL(cfg['HOST'],port,timeout=10,context=context) as mail:mail.login(cfg['USER'],cfg['PASSWORD']);mail.send_message(msg)

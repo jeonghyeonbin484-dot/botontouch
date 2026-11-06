@@ -20,6 +20,23 @@ class CloudFirstPasswordTests(unittest.TestCase):
   new='Fictional-Personal-Password-25!';body={'username':'DEMO.B','code':code,'new_password':new,'confirmation':new}
   self.assertTrue(self.f.call('/api/auth/first-password/confirm',body,client)['activated']);self.f.call('/api/auth/logout',{},client);self.f.call('/api/auth/login',{'username':'DEMO.B','password':new},client)
   self.assertEqual(self.f.call('/api/auth/status',client=client)['user']['username'],'demo.b')
+ def test_requested_shared_initial_password_forces_change(self):
+  import password_security
+  encoded=password_security.hash_password('1234!')
+  self.modify("UPDATE users SET active=1,must_change_password=1,password_changed=NULL,initial_shared=1,password_hash='"+encoded+"' WHERE username='demo.b'")
+  with patch.dict(os.environ,{'BATON_STAFF_SHARED_INITIAL_ALLOWED':'true'}):
+   client=self.f.client();self.f.call('/api/auth/login',{'username':'DEMO.B','password':'1234!'},client)
+   self.assertTrue(self.f.call('/api/auth/status',client=client)['user']['must_change_password'])
+   with self.assertRaises(__import__('urllib.error',fromlist=['HTTPError']).HTTPError) as error:self.f.call('/api/workspaces',client=client)
+   self.assertEqual(error.exception.code,403);error.exception.close()
+   new='Fictional-New-Password-26!';self.f.call('/api/auth/session-password',{'username':'demo.b','new_password':new,'confirmation':new},client)
+   with self.assertRaises(__import__('urllib.error',fromlist=['HTTPError']).HTTPError) as error:self.f.call('/api/auth/login',{'username':'demo.b','password':'1234!'})
+   self.assertEqual(error.exception.code,401);error.exception.close()
+   self.f.call('/api/auth/login',{'username':'demo.b','password':new},client);self.assertFalse(self.f.call('/api/auth/status',client=client)['user']['must_change_password'])
+ def test_shared_initial_disabled_by_default(self):
+  with patch.dict(os.environ,{'BATON_STAFF_SHARED_INITIAL_ALLOWED':'false'}):
+   with self.assertRaises(__import__('urllib.error',fromlist=['HTTPError']).HTTPError) as error:self.f.call('/api/auth/login',{'username':'demo.b','password':'1234!'})
+   self.assertEqual(error.exception.code,409);error.exception.close()
  def test_unconfigured_does_not_send_or_activate(self):
   with patch.dict(os.environ,{'BATON_OTP_SIGNING_SECRET':''}),patch('staff_self_service._send_code') as send:
    self.assertFalse(self.f.call('/api/auth/first-password/options')['enabled'])

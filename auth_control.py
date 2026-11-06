@@ -71,7 +71,7 @@ def identity(handler,db):
     except Exception:token=''
     if token:
         row=db.execute('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.active=1',(session_digest(token),time.time())).fetchone()
-        if row and (not row['is_test'] or server_settings.dev_test_accounts()) and (not row['initial_shared'] or __import__('staff_account_sync').enabled(db)):
+        if row and (not row['is_test'] or server_settings.dev_test_accounts()) and (not row['initial_shared'] or __import__('staff_account_sync').shared_initial_allowed(db)):
             candidate=profile(db,row);staff=candidate['employee']
             if not staff or staff['active'] and staff['department_active'] and staff['employment_status']=='active' and (not staff['saeoll_id'] or staff['saeoll_id']==row['username']) and (staff['source']!='test' or server_settings.dev_test_accounts()):handler.user=candidate
     if handler.user is None:raise AccessError(401,'로그인이 필요하거나 세션이 만료되었습니다.')
@@ -150,7 +150,7 @@ def provision(db,handler,body):
     if db.execute('SELECT 1 FROM employee_accounts WHERE employee_id=?',(staff['employee_id'],)).fetchone() or db.execute('SELECT 1 FROM users WHERE username=?',(staff['saeoll_id'],)).fetchone():raise AccessError(409,'이 직원 또는 SAEOLL_ID에 계정이 이미 있습니다. 자동 병합하지 않습니다.')
     test=body.get('test_password') is True
     if test and not(server_settings.dev_test_accounts() and staff['source']=='test' and staff['employee_id'].startswith('TEST-') and staff['saeoll_id'].startswith('test.')):raise AccessError(403,'1234!는 개발 모드의 명시된 가상 직원(TEST-/test.)에게만 허용됩니다.')
-    personal=__import__('staff_account_sync').enabled(db) and staff['source']=='org_api' and not staff['hidden_from_picker']
+    personal=__import__('staff_account_sync').shared_initial_allowed(db) and staff['source']=='org_api' and not staff['hidden_from_picker']
     temporary='1234!' if test or personal else secrets.token_urlsafe(24)
     active=body.get('activate') is True
     cursor=db.execute("INSERT INTO users(username,password_hash,salt,active,must_change_password,is_test,initial_shared) VALUES(?,?,'',?,1,?,?)",(staff['saeoll_id'],passwords.hash_password(temporary),int(active),int(staff['source']=='test'),int(personal)))
@@ -183,7 +183,7 @@ def handle(handler,factory,method):
             except AccessError:
                 user=getattr(handler,'user',None)
             if path=='/api/auth/status' and method=='GET':
-                json_cookie(handler,{'enabled':enabled(db),'setup_required':not enabled(db),'auth_required':True,'session_policy':'interactive-v2','user':user,'test_accounts_enabled':server_settings.dev_test_accounts(),'bootstrap_token_required':server_settings.central(),'personal_initial_password':__import__('staff_account_sync').enabled(db)});return True
+                json_cookie(handler,{'enabled':enabled(db),'setup_required':not enabled(db),'auth_required':True,'session_policy':'interactive-v2','user':user,'test_accounts_enabled':server_settings.dev_test_accounts(),'bootstrap_token_required':server_settings.central(),'personal_initial_password':__import__('staff_account_sync').shared_initial_allowed(db)});return True
             if path=='/api/auth/session-password/options' and method=='GET':
                 handler.respond(200,{'allowed':bool(user and user['must_change_password']),'username':user['username'] if user else None});return True
             if path=='/api/auth/reset-request' and method=='POST':
@@ -196,7 +196,7 @@ def handle(handler,factory,method):
             if path in ('/api/auth/setup','/api/auth/login') and method=='POST':
                 body=read_json(handler);name=validate_username(body.get('username'));password=body.get('password')
                 if not isinstance(password,str) or not 1<=len(password)<=200:raise ValueError('아이디와 비밀번호를 확인하세요.')
-                if path.endswith('/login') and password=='1234!':
+                if path.endswith('/login') and password=='1234!' and not __import__('staff_account_sync').shared_initial_allowed(db):
                     handler.respond(409,{'error':'최초 본인확인 후 비밀번호를 설정하세요.','code':'FIRST_PASSWORD_VERIFICATION_REQUIRED'});return True
                 db.execute('BEGIN IMMEDIATE')
                 if path.endswith('/setup'):
@@ -213,7 +213,7 @@ def handle(handler,factory,method):
                         matches=db.execute('SELECT u.* FROM users u JOIN employee_accounts a ON a.user_id=u.id WHERE lower(u.username)=lower(?) LIMIT 2',(name,)).fetchall()
                         if len(matches)==1:row=matches[0];name=row['username']
                     keys=limits(handler,name);check_limits(db,keys);valid=verify_limited(password,row)
-                    if not valid or not row['active'] or row['is_test'] and not server_settings.dev_test_accounts() or row['initial_shared'] and not __import__('staff_account_sync').enabled(db):
+                    if not valid or not row['active'] or row['is_test'] and not server_settings.dev_test_accounts() or row['initial_shared'] and not __import__('staff_account_sync').shared_initial_allowed(db):
                         record_failure(db,keys);audit(db,handler,'로그인 실패',row['id'] if row else None);db.commit();raise AccessError(401,'아이디 또는 비밀번호가 올바르지 않거나 비활성 계정입니다.')
                     __import__('employee_identity').ensure_mapping(db,dict(row))
                     data=profile(db,row);staff=data['employee']
