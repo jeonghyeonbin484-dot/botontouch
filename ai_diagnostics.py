@@ -3,6 +3,12 @@ import json,sys,uuid,re
 
 def payload(error,feature='',user=None):
  from gemini_transport import GeminiTransportError
+ from gemini_engine import DraftSourceError
+ if isinstance(error,DraftSourceError):
+  trace=uuid.uuid4().hex[:16]
+  record={'event':'ai_response_validation_failed','trace_id':trace,'feature':feature,'origin':'ai_validation','http_status':error.http_status,'upstream_status':200,'code':error.error_code,'reason':error.reason,'item_index':error.item_index}
+  print(json.dumps(record),file=sys.stderr,flush=True)
+  return {'error':str(error),'code':error.error_code,'origin':'ai_validation','trace_id':trace,'upstream_status':200}
  if not isinstance(error,GeminiTransportError):return {'error':str(error)}
  trace=uuid.uuid4().hex[:16]
  provider=error.provider_error.get('status','UNKNOWN')
