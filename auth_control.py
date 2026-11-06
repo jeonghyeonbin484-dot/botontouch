@@ -173,6 +173,7 @@ def verify_limited(password,row):
 
 
 def handle(handler,factory,method):
+    if __import__('staff_self_service').handle(handler,factory,method):return True
     if __import__('account_activation').handle(handler,factory,method):return True
     path=handler.path.split('?')[0]
     if not path.startswith('/api/auth/'):return False
@@ -193,6 +194,8 @@ def handle(handler,factory,method):
             if path in ('/api/auth/setup','/api/auth/login') and method=='POST':
                 body=read_json(handler);name=validate_username(body.get('username'));password=body.get('password')
                 if not isinstance(password,str) or not 1<=len(password)<=200:raise ValueError('아이디와 비밀번호를 확인하세요.')
+                if path.endswith('/login') and password=='1234!':
+                    handler.respond(409,{'error':'최초 본인확인 후 비밀번호를 설정하세요.','code':'FIRST_PASSWORD_VERIFICATION_REQUIRED'});return True
                 db.execute('BEGIN IMMEDIATE')
                 if path.endswith('/setup'):
                     if enabled(db):raise AccessError(403,'초기 관리자가 이미 설정되어 있습니다.')
