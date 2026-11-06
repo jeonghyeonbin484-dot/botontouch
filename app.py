@@ -165,6 +165,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
+        if __import__('guide_media').serve(self,ROOT):return
         route=self.path.split('?')[0]
         if any(part.startswith('.') for part in route.split('/') if part) or route.endswith(('.py','.sqlite3','.json','.env')):
             return self.respond(404,{'error':'페이지가 없습니다.'})

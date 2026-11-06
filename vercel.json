@@ -4,12 +4,13 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 120,
-      "includeFiles": "{*.py,gemini_verification_fixtures.json,web/**,templates/**}"
+      "includeFiles": "{*.py,gemini_verification_fixtures.json,web/**,templates/**}",
+      "excludeFiles": "public/**"
     }
   },
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!media/).*)",
       "destination": "/api/index"
     }
   ],

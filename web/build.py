@@ -17,6 +17,8 @@ js += '\n' + (ROOT / 'report-preview.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'cloud-runtime.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'user-menu.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'chat-notifications.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'video-guide-config.js').read_text(encoding='utf-8')
+js += '\n' + (ROOT / 'video-guide.js').read_text(encoding='utf-8')
 assert '</script' not in js.lower()
 assert shell.count('/* APP_STYLE */') == shell.count('/* APP_SCRIPT */') == 1
 output = shell.replace('/* APP_STYLE */', css).replace('/* APP_SCRIPT */', js)
