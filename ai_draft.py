@@ -22,6 +22,7 @@ def generate(documents,question=None,expected_questions=False,document_check=Fal
  elif cfg['scope']=='approved-materials':
   required=('AI_EXTERNAL_TRANSMISSION_ALLOWED','AI_APPROVED_WRITING_ALLOWED','BATON_AI_APPROVED_MATERIALS')
   if any(os.environ.get(k)!='true' for k in required) or not os.environ.get('AI_APPROVAL_REFERENCE','').strip():raise AIServiceError('업무자료 외부 AI 전송 승인 및 서버 자료 허용 설정이 완료되지 않았습니다. 자료는 전송하지 않았습니다.',403)
+  __import__('material_transmission_policy').check(documents,question,{'gap_context':gap_context,'gap_apply_context':gap_apply_context})
  else:raise AIServiceError('허용된 AI 자료 범위가 설정되지 않았습니다.',403)
  # 기존 공통 전송 모듈의 60초 제한·503 제한 재시도·응답 검증을 그대로 사용한다.
  from contextlib import closing

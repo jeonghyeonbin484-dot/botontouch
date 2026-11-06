@@ -6,6 +6,12 @@ class StaffPolicyTests(unittest.TestCase):
  def setUp(self):
   self.env=patch.dict(os.environ,{'BATON_STAFF_AI_MODE':'live','BATON_STAFF_FICTIONAL_ALLOWED':'true','BATON_STAFF_AI_TEST_USERS':'demo.a,demo.global','GEMINI_API_KEY':'fictional-unit-key','GEMINI_MODEL':'gemini-3.1-flash-lite'});self.env.start();self.docs=gemini_verification.documents();self.user={'id':1,'username':'demo.a'}
  def tearDown(self):self.env.stop()
+ def test_normal_staff_not_in_legacy_test_allowlist(self):
+  actor={'id':2832,'username':'fictional.normal.staff','role':'member','active':True,'must_change_password':False}
+  docs,_=staff_ai_policy.authorize(self.docs,actor,None);self.assertEqual(len(docs),3)
+ def test_incomplete_or_disabled_identity_still_blocked(self):
+  for extra in [{'active':False},{'must_change_password':True},{'id':True},{'id':0}]:
+   with self.assertRaises(staff_ai_policy.PolicyError):staff_ai_policy.authorize(self.docs,{**self.user,**extra},None)
  def test_originals_keep_uploaded_ids(self):
   self.docs[0]['id']=314;docs,_=staff_ai_policy.authorize(self.docs,self.user,None);self.assertEqual(docs[0]['id'],314)
  def test_changed_sources_block_before_network(self):

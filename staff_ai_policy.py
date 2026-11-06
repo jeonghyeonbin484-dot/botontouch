@@ -15,8 +15,8 @@ def approved_sources():
  return {d['name']:json.loads(d['sources']) for d in gemini_verification.documents()}
 def authorize(documents,actor,question):
  if not active():raise PolicyError('실제 AI 외부 전송이 비활성화되어 있습니다. 운영 자료 전송 승인을 별도로 확인하세요.')
- allowed={s.strip() for s in os.environ.get('BATON_STAFF_AI_TEST_USERS','').split(',') if s.strip()}
- if not actor or actor.get('username') not in allowed:raise PolicyError('이 계정은 가상자료 실제 AI 테스트 대상이 아닙니다. 실제 업무자료는 전송하지 않습니다.')
+ if not isinstance(actor,dict) or type(actor.get('id')) is not int or actor['id']<=0 or not isinstance(actor.get('username'),str) or not actor['username'].strip() or actor.get('active',True) is False or actor.get('active',True)==0 or actor.get('must_change_password',False):raise PolicyError('AI 사용을 위해 정상 로그인과 최초 비밀번호 변경이 필요합니다.')
+ # 사용자 이름 허용목록 대신 서버의 인증 신원을 사용한다. 자료의 승인 범위 검사는 아래에서 그대로 수행한다.
  cfg=settings()
  if not cfg['key'] or cfg['model']!='gemini-3.1-flash-lite':raise PolicyError('서버의 Gemini 키 또는 검증 모델 설정이 준비되지 않았습니다.')
  if question is not None and question not in QUESTIONS:raise PolicyError('개인정보 전송 방지를 위해 승인된 가상 질문만 허용합니다: '+ ' / '.join(sorted(QUESTIONS)))
