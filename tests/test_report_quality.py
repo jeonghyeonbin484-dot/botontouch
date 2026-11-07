@@ -1,4 +1,5 @@
-﻿import unittest,copy,io,zipfile,xml.etree.ElementTree as E
+from test_hwpx_style_160 import assert_header_extensions_only
+import unittest,copy,io,zipfile,xml.etree.ElementTree as E
 import report_content,report_document,export_hwpx
 class ReportQualityTests(unittest.TestCase):
  def draft(self):return dict(title='가상 드론 교육 업무 인수인계서',reviewed=True,workspace={'title':'서무업무'},items=[],references={})
@@ -15,7 +16,7 @@ class ReportQualityTests(unittest.TestCase):
  def test_styles_summary_page_and_input_preserved(self):
   d=self.draft();d['items']=[dict(category='담당 업무',text='가상 교육 자료를 정리합니다.',source_ids=[])];before=copy.deepcopy(d)
   with zipfile.ZipFile(io.BytesIO(export_hwpx.build(d))) as z,zipfile.ZipFile(export_hwpx.TEMPLATE) as t:
-   self.assertEqual(z.read('Contents/header.xml'),t.read('Contents/header.xml'));self.assertEqual(z.read('BinData/image1.PNG'),t.read('BinData/image1.PNG'));self.assertEqual(z.read('BinData/image2.PNG'),t.read('BinData/image2.PNG'));section=E.fromstring(z.read('Contents/section0.xml'));summary=next(p for p in section if '업무 인계·인수 요약서' in ''.join(p.itertext()));self.assertEqual(summary.get('pageBreak'),'1');self.assertIsNotNone(section.find('.//{%s}pageNum'%export_hwpx.HP))
+   assert_header_extensions_only(self,z.read('Contents/header.xml'),t.read('Contents/header.xml'));self.assertEqual(z.read('BinData/image1.PNG'),t.read('BinData/image1.PNG'));self.assertEqual(z.read('BinData/image2.PNG'),t.read('BinData/image2.PNG'));section=E.fromstring(z.read('Contents/section0.xml'));summary=next(p for p in section if '업무 인계·인수 요약서' in ''.join(p.itertext()));self.assertEqual(summary.get('pageBreak'),'1');self.assertIsNotNone(section.find('.//{%s}pageNum'%export_hwpx.HP))
   self.assertEqual(d,before)
  def test_summary_not_a_second_copy_of_body(self):
   d=self.draft();sentence='가상 교육의 현장 참석을 확인하고 준비한 자료를 배부하여 후임자가 업무 절차를 익힐 수 있도록 운영합니다.';d['items']=[dict(category='담당 업무',text=sentence,source_ids=[])];m=report_document.build(d);self.assertEqual(sum(sentence in b['text'] for b in m['blocks']),1)

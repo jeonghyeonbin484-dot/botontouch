@@ -1,4 +1,4 @@
-﻿import copy,io,zipfile,unittest,xml.etree.ElementTree as E
+import copy,io,zipfile,unittest,xml.etree.ElementTree as E
 import export_hwpx,report_document
 class FinalOutputTests(unittest.TestCase):
  def test_citations_removed_only_at_export(self):
@@ -11,7 +11,9 @@ class FinalOutputTests(unittest.TestCase):
    text=''.join(E.fromstring(z.read('Contents/section0.xml')).itertext())
    self.assertNotIn('출처:',text);self.assertNotIn('[13]',text);self.assertIn('재고 13개 확인',text);self.assertIn('구매 후 검수',text)
    self.assertIn('업무 인계·인수 요약서',text)
-   with zipfile.ZipFile(export_hwpx.TEMPLATE) as t:self.assertEqual(z.read('Contents/header.xml'),t.read('Contents/header.xml'))
+   with zipfile.ZipFile(export_hwpx.TEMPLATE) as t:
+    from test_hwpx_style_160 import assert_header_extensions_only
+    assert_header_extensions_only(self,z.read('Contents/header.xml'),t.read('Contents/header.xml'))
   self.assertEqual(d,original)
   self.assertTrue(any(b['text'].startswith('출처:') for b in report_document.build(d)['blocks']))
 if __name__=='__main__':unittest.main()

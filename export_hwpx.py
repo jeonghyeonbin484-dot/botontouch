@@ -37,6 +37,7 @@ def build(draft):
  source=ET.fromstring(parts['Contents/section0.xml']);nodes=list(source)
  section=ET.Element(source.tag,source.attrib)
  title=copy.deepcopy(nodes[0]);subtitle=nodes[1];heading=nodes[2];body=nodes[3]
+ style=__import__('hwpx_report_style').apply(parts,body,heading)
  def text(p,value):
   run=p.find('{%s}run'%HP)
   attrs=dict(run.attrib) if run is not None else {'charPrIDRef':'21'}
@@ -52,13 +53,13 @@ def build(draft):
   elif kind in ('summary_title','appendix_title'):
    p=copy.deepcopy(title_cell.find('.//{%s}p'%HP));p.set('pageBreak','1');text(p,value);section.append(p)
   elif kind=='heading':
-   p=copy.deepcopy(heading);cs=cells(p)
+   p=copy.deepcopy(heading);p.set('paraPrIDRef',style['heading_para']);cs=cells(p)
    text(cs[0].find('.//{%s}p'%HP),block['number']);text(cs[1].find('.//{%s}p'%HP),value)
    section.append(p)
   else:
-   p=copy.deepcopy(body);text(p,value)
+   p=copy.deepcopy(body);text(p,value);p.set('paraPrIDRef',style['body_para']);p.set('styleIDRef','0');p.find('{%s}run'%HP).set('charPrIDRef',style['body_char'])
    if block.get('style')=='note':
-    p.set('paraPrIDRef','28');p.set('styleIDRef','0');p.find('{%s}run'%HP).set('charPrIDRef','14')
+    p.find('{%s}run'%HP).set('charPrIDRef',style['note_char'])
    section.append(p)
  # Repeated templates must have new instance IDs; style and binary references remain intact.
  ident=100000
