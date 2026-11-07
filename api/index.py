@@ -17,9 +17,13 @@ class handler(app.Handler):
   self.dispatch('GET')
  def do_POST(self):self.dispatch('POST')
  def dispatch(self,method):
+  if self.path.split('?')[0]=='/api/system/storage-status':
+   if method!='GET':return self.simple(405,{'error':'상태 확인에는 GET 요청을 사용하세요.'})
+   try:return self.simple(200,__import__('cloud_store').readiness())
+   except Exception as error:return self.simple(503,__import__('storage_diagnostics').payload(error,self.path))
   if self.path.split('?')[0] in ('/api/system/capabilities','/api/demo/status'):
    cfg=__import__('ai_draft').settings()
-   return self.simple(200,{'environment':'cloud','ai_mode':cfg['mode'],'ai_scope':cfg['scope'],'model':cfg['model'],'ai_transmission_ready':cfg['scope']=='approved-materials' and all(os.environ.get(k)=='true' for k in ('AI_EXTERNAL_TRANSMISSION_ALLOWED','AI_APPROVED_WRITING_ALLOWED','BATON_AI_APPROVED_MATERIALS')) and bool(os.environ.get('AI_APPROVAL_REFERENCE','')),'organization_sync_enabled':os.environ.get('BATON_ORG_SYNC_ALLOWED')=='true','storage_configured':bool(os.environ.get('DATABASE_URL')),'release':'full-20261106','authentication_required':True,'external_transmission_allowed':cfg['mode']=='live' and (cfg['scope']=='approved-materials' and all(os.environ.get(k)=='true' for k in ('AI_EXTERNAL_TRANSMISSION_ALLOWED','AI_APPROVED_WRITING_ALLOWED','BATON_AI_APPROVED_MATERIALS')) and bool(os.environ.get('AI_APPROVAL_REFERENCE','')) or cfg['scope']=='verified-fictional-only' and os.environ.get('BATON_STAFF_FICTIONAL_ALLOWED')=='true')})
+   return self.simple(200,{'environment':'cloud','ai_mode':cfg['mode'],'ai_scope':cfg['scope'],'model':cfg['model'],'ai_transmission_ready':cfg['scope']=='approved-materials' and all(os.environ.get(k)=='true' for k in ('AI_EXTERNAL_TRANSMISSION_ALLOWED','AI_APPROVED_WRITING_ALLOWED','BATON_AI_APPROVED_MATERIALS')) and bool(os.environ.get('AI_APPROVAL_REFERENCE','')),'organization_sync_enabled':os.environ.get('BATON_ORG_SYNC_ALLOWED')=='true','storage_configured':bool(os.environ.get('DATABASE_URL')),'release':'full-20261107-storage','authentication_required':True,'external_transmission_allowed':cfg['mode']=='live' and (cfg['scope']=='approved-materials' and all(os.environ.get(k)=='true' for k in ('AI_EXTERNAL_TRANSMISSION_ALLOWED','AI_APPROVED_WRITING_ALLOWED','BATON_AI_APPROVED_MATERIALS')) and bool(os.environ.get('AI_APPROVAL_REFERENCE','')) or cfg['scope']=='verified-fictional-only' and os.environ.get('BATON_STAFF_FICTIONAL_ALLOWED')=='true')})
   try:size=int(self.headers.get('Content-Length','0'))
   except ValueError:return self.simple(400,{'error':'요청 크기가 올바르지 않습니다.'})
   if size<0 or size>4*1024*1024:return self.simple(413,{'error':'현재 Vercel 함수 경로는 요청당 4MB까지 등록할 수 있습니다. 대용량 자료는 별도 저장소 연결이 필요합니다. 기존 입력은 유지됩니다.'})
@@ -31,10 +35,10 @@ class handler(app.Handler):
     payload=self.wfile.getvalue()
     if len(payload)>4*1024*1024:raise StorageUnavailable('다운로드가 Vercel 함수의 응답 한도(4MB)를 초과했습니다.')
   except StorageUnavailable as error:
-   self.wfile=output;self.capture=False;return self.simple(503,{'error':str(error),'code':error.code,'retry_after':error.retry_after})
+   self.wfile=output;self.capture=False;return self.simple(503,__import__('storage_diagnostics').payload(error,self.path))
   except Exception as error:
    # Never serialize provider errors, connection strings, bodies, or credentials.
-   self.wfile=output;self.capture=False;return self.simple(503,__import__('storage_diagnostics').payload(error))
+   self.wfile=output;self.capture=False;return self.simple(503,__import__('storage_diagnostics').payload(error,self.path))
   self.wfile=output;self.capture=False
   if len(payload)>1024 and 'gzip' in self.headers.get('Accept-Encoding','') and any(k.lower()=='content-type' and ('text/' in v or 'application/json' in v) for k,v in self.captured_headers):
    payload=gzip.compress(payload,compresslevel=5)

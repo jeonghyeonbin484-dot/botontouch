@@ -16,5 +16,6 @@
   ],
   "regions": [
     "sin1"
-  ]
+  ],
+  "buildCommand": "python3 tools/validate_cloud_environment.py"
 }

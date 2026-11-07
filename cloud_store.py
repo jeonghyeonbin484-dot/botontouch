@@ -1,9 +1,7 @@
-"""Demo-only persistence: serialize existing SQLite under a Postgres row lock.
+"""공용 PostgreSQL에 기존 SQLite 스냅샷을 보관하는 서버 저장소.
 
-The Postgres transaction is held until the handler completes. Never send a successful
-HTTP response before durable commit. Fresh /tmp files per request prevent sharing
-mutable SQLite state across concurrent Fluid Compute invocations.
-This preserves the existing SQLite SQL without migrating/copying local business data.
+PC 파일을 읽지 않고 요청별 임시 복제본을 사용한다. PostgreSQL 커밋이
+성공한 뒤에만 응답하며, 운영 환경에서는 빈 DB나 가상 계정을 생성하지 않는다.
 """
 import os,tempfile,hashlib,threading,time
 from contextlib import contextmanager,closing
@@ -74,8 +72,8 @@ def demo_search_fixtures():
 @contextmanager
 def database_request():
  """최신 버전 확인 → 개인 요청별 복사 → 원자적 저장. DB 장애 시 캐시로 인증하지 않는다."""
- url=os.environ.get('DATABASE_URL','')
- if not url:raise StorageUnavailable('공유 데이터베이스가 연결되지 않았습니다.')
+ try:url=__import__('cloud_database_config').connection_url()
+ except __import__('cloud_database_config').DatabaseConfigurationError as error:raise StorageUnavailable(str(error),'STORAGE_NOT_CONFIGURED',60) from None
  key=hashlib.sha256(url.encode()).digest()
  with _cache_lock:failure=_failure_backoff.get(key)
  if failure and failure[0]>time.monotonic():raise StorageUnavailable(failure[1],failure[2],max(1,int(failure[0]-time.monotonic())))
@@ -85,10 +83,13 @@ def database_request():
   with psycopg.connect(url,connect_timeout=10,autocommit=False,prepare_threshold=None) as pg:
    pg.execute("SET LOCAL lock_timeout='15s'")
    pg.execute("SET LOCAL statement_timeout='85s'")
-   pg.execute('CREATE TABLE IF NOT EXISTS baton_demo_state (id integer PRIMARY KEY CHECK(id=1), payload bytea, updated timestamptz DEFAULT now())')
-   pg.execute('INSERT INTO baton_demo_state(id) VALUES(1) ON CONFLICT DO NOTHING')
+   if os.environ.get('BATON_CLOUD_LOCAL_TEST')=='1':
+    pg.execute('CREATE TABLE IF NOT EXISTS baton_demo_state (id integer PRIMARY KEY CHECK(id=1), payload bytea, updated timestamptz DEFAULT now())')
+    pg.execute('INSERT INTO baton_demo_state(id) VALUES(1) ON CONFLICT DO NOTHING')
    # 큰 payload 대신 작은 버전값만 받는다. 다른 인스턴스의 수정·세션 폐기도 즉시 감지한다.
-   version=pg.execute('SELECT updated FROM baton_demo_state WHERE id=1 FOR UPDATE').fetchone()[0]
+   current=pg.execute('SELECT updated FROM baton_demo_state WHERE id=1 FOR UPDATE').fetchone()
+   if not current:raise StorageUnavailable('공용 DB에 기존 상태 행이 없어 초기화하지 않았습니다. 연결 대상을 확인하세요.','STORAGE_NOT_INITIALIZED',60)
+   version=current[0]
    before=_cached(key,version)
    if before is None:
     row=pg.execute('SELECT payload FROM baton_demo_state WHERE id=1').fetchone()
@@ -104,7 +105,7 @@ def database_request():
       if not before:seed()
       demo_search_fixtures()
      elif not before:
-      with closing(__import__('app').connect()) as initial:initial.commit()
+      raise StorageUnavailable('공용 DB에 기존 데이터가 없어 초기화하지 않았습니다. 연결 대상을 확인하세요.','STORAGE_NOT_INITIALIZED',60)
      yield
      after=file.read_bytes()
      if len(after)>MAX_DATABASE_BYTES:raise StorageUnavailable('공유 저장공간 한도(20MB)를 초과했습니다. 입력은 화면에 유지됩니다.')
@@ -122,5 +123,20 @@ def database_request():
    code='STORAGE_QUOTA_EXCEEDED' if quota else 'STORAGE_UNAVAILABLE'
    notice='DB 사용 한도 초과로 연결이 차단되었습니다. 기존 데이터는 유지됩니다.' if quota else 'DB 연결을 확인할 수 없습니다. 잠시 후 다시 시도하세요.'
    with _cache_lock:_failure_backoff[key]=(time.monotonic()+delay,notice,code)
-   raise StorageUnavailable(notice,code,delay) from None
+   failure=StorageUnavailable(notice,code,delay);failure.failure_kind=type(error).__name__;failure.sqlstate=getattr(error,'sqlstate',None)
+   raise failure from None
   raise
+
+
+def readiness():
+ """공개 상태 확인용 읽기 전용 쿼리. 계정/자료/스냅샷 본문은 읽거나 생성하지 않는다."""
+ import cloud_database_config as config,psycopg
+ try:url=config.connection_url()
+ except config.DatabaseConfigurationError as error:raise StorageUnavailable(str(error),'STORAGE_NOT_CONFIGURED',60) from None
+ with psycopg.connect(url,connect_timeout=10,autocommit=False,prepare_threshold=None) as pg:
+  pg.execute('SET TRANSACTION READ ONLY')
+  pg.execute("SET LOCAL statement_timeout='8s'")
+  pg.execute('SELECT 1')
+  initialized=pg.execute('SELECT payload IS NOT NULL FROM public.baton_demo_state WHERE id=1').fetchone()
+  if not initialized or not initialized[0]:raise StorageUnavailable('공용 DB에 기존 데이터가 확인되지 않아 처리를 중단했습니다. DB 연결 대상을 확인하세요.','STORAGE_NOT_INITIALIZED',60)
+ return {'status':'ready','release':'full-20261107-storage',**config.safe_metadata(),'checked':True,'mode':'postgresql_sqlite_snapshot','authentication_required':True}
