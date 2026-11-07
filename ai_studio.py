@@ -90,7 +90,7 @@ def handle(handler,factory,method):
    if action=='messages':
     text=body.get('text','');mode=body.get('mode','draft');nonce=body.get('nonce','');focus=body.get('focus_index')
     if not isinstance(text,str) or not 1<=len(text.strip())<=8000 or mode not in studio_ai.MODES or not isinstance(nonce,str) or not re.fullmatch('[A-Za-z0-9_-]{8,100}',nonce):raise ValueError('메시지와 작성 모드를 확인하세요. 메시지는 8,000자 이내입니다.')
-    current=draft_for(db,s);pending=db.execute("SELECT result FROM ai_studio_messages WHERE session_id=? AND role='assistant' AND status='done' AND proposal_state='pending' ORDER BY id DESC LIMIT 1",(sid,)).fetchone();candidate=unpack(pending[0]).get('proposed_draft') if pending else None
+    current=draft_for(db,s);pending=db.execute("SELECT result,baseline FROM ai_studio_messages WHERE session_id=? AND role='assistant' AND mode IN ('draft','review') AND status='done' AND proposal_state='pending' ORDER BY id DESC LIMIT 1",(sid,)).fetchone();candidate=unpack(pending[0]).get('proposed_draft') if pending and pending['baseline']==(workflow.fingerprint(current) if current else None) else None
     if mode in ('review','qa') and not current and not candidate:raise ValueError('인수인계서 작성 모드에서 초안을 먼저 제안받으세요.')
     if mode=='qa' and not current:raise ValueError('초안을 문서에 반영한 뒤 예상 Q&A를 만드세요.')
     if focus is not None and (type(focus) is not int or not current or not 0<=focus<len(current['items'])):raise ValueError('수정할 문서 항목을 다시 선택하세요.')
@@ -105,7 +105,7 @@ def handle(handler,factory,method):
      mid=db.execute("INSERT INTO ai_studio_messages(session_id,nonce,role,mode,content,status) VALUES(?,?,'user',?,?,'pending')",(sid,nonce,mode,text)).lastrowid
     db.commit();baseline=workflow.fingerprint(current) if current else None;docs=documents(db,s)
     history=[{'role':r['role'],'text':r['content'][:1800]} for r in reversed(db.execute("SELECT role,content FROM ai_studio_messages WHERE session_id=? AND status='done' ORDER BY id DESC LIMIT 12",(sid,)).fetchall())]
-    context={'mode':mode,'message':text,'focus_index':focus,'history':history,'draft':{k:(current or candidate)[k] for k in ('title','items')} if current or candidate else None,'existing_questions':[{'question':q['question'],'answer':q['reply']} for q in handover_journey.question_rows(db,draft_id=s['draft_id'])] if s['draft_id'] else []}
+    context={'previous_proposal':candidate if current else None,'mode':mode,'message':text,'focus_index':focus,'history':history,'draft':{k:(current or candidate)[k] for k in ('title','items')} if current or candidate else None,'existing_questions':[{'question':q['question'],'answer':q['reply']} for q in handover_journey.question_rows(db,draft_id=s['draft_id'])] if s['draft_id'] else []}
     try:
      if len(json.dumps(context,ensure_ascii=False))>90000:raise ValueError('대화와 문서가 너무 깁니다. 새 업무로 나누거나 특정 항목을 선택해 주세요.')
      result=ai_draft.generate(docs,actor=user,chat_context=context)
