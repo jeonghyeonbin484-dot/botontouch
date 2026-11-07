@@ -21,11 +21,7 @@ def handle(handler,factory,method):
     result=ai_draft.generate(docs,gap_context=context,actor=user)
     db.execute('BEGIN IMMEDIATE')
     if workflow.fingerprint(workflow.load_draft(db,draft_id,workspace))!=baseline:raise auth_control.AccessError(409,'생성 중 문서가 변경됐습니다. 입력은 유지되며 최신 문서로 다시 시도하세요.')
-    known={re.sub(r'\s+','',q['question']).casefold() for q in existing};added=0
-    for q in result['questions']:
-     key=re.sub(r'\s+','',q['question']).casefold()
-     if key in known:continue
-     known.add(key);cur=db.execute("INSERT INTO followups(workspace_id,draft_id,item_index,question,actor,origin,reason,source_ids,baseline,qa_kind,recommended_answer,answer_source_ids,answer_supported,qa_references,qa_mode,qa_model) VALUES(?,?,?,?,?,'ai',?,?,?,'expected',?,?,?,?,?,?)",(workspace,draft_id,q['target_index'],q['question'],user['username'],q['reason'],json.dumps(q['source_ids']),baseline,q['recommended_answer'],json.dumps(q['answer_source_ids']),int(q['supported']),json.dumps(result.get('references',{}),ensure_ascii=False),result.get('mode','unknown'),result.get('model','')));event(db,cur.lastrowid,user,'AI 예상 질문·추천 답변 생성',{'question':q['question'],'model':result.get('model'),'mode':result.get('mode')});added+=1
+    added=store_suggestions(db,workspace,draft_id,user,baseline,result)
     db.execute('INSERT INTO journey_checks(workspace_id,draft_id,baseline,payload) VALUES(?,?,?,?)',(workspace,draft_id,baseline,json.dumps(result,ensure_ascii=False)));db.commit();handler.respond(201,{'added':added,'summary':result['summary'],'model':result.get('model'),'mode':result.get('mode'),'questions':question_rows(db,draft_id=draft_id)});return True
    if path.endswith('/save') or path.endswith('/archive'):
     key=body.get('id');q=db.execute("SELECT * FROM followups WHERE id=? AND workspace_id=? AND draft_id=? AND qa_kind='expected' AND qa_archived=0",(key,workspace,draft_id)).fetchone() if key else None
@@ -54,3 +50,16 @@ def handle(handler,factory,method):
  except (ValueError,TypeError,KeyError) as error:handler.respond(getattr(error,'http_status',400),{'error':str(error) if isinstance(error,ValueError) else '질문·답변 입력 형식을 확인하세요.'})
  except sqlite3.Error:handler.respond(409,{'error':'질문 저장 중 충돌했습니다. 입력은 유지되며 다시 시도할 수 있습니다.'})
  return True
+
+def store_suggestions(db,workspace,draft_id,user,baseline,result,selected=True):
+ from handover_journey import question_rows,event
+ existing=question_rows(db,draft_id=draft_id);before_ids={q['id'] for q in existing}
+ known={re.sub(r'\s+','',q['question']).casefold() for q in existing};added=0
+ for q in result['questions']:
+  key=re.sub(r'\s+','',q['question']).casefold()
+  if key in known:continue
+  known.add(key);cur=db.execute("INSERT INTO followups(workspace_id,draft_id,item_index,question,actor,origin,reason,source_ids,baseline,qa_kind,recommended_answer,answer_source_ids,answer_supported,qa_references,qa_mode,qa_model) VALUES(?,?,?,?,?,'ai',?,?,?,'expected',?,?,?,?,?,?)",(workspace,draft_id,q['target_index'],q['question'],user['username'],q['reason'],json.dumps(q['source_ids']),baseline,q['recommended_answer'],json.dumps(q['answer_source_ids']),int(q['supported']),json.dumps(result.get('references',{}),ensure_ascii=False),result.get('mode','unknown'),result.get('model','')));event(db,cur.lastrowid,user,'AI 예상 질문·추천 답변 생성',{'question':q['question'],'model':result.get('model'),'mode':result.get('mode')});added+=1
+ if not selected:
+  for row in question_rows(db,draft_id=draft_id):
+   if row['id'] not in before_ids:db.execute('UPDATE followups SET qa_included=0 WHERE id=?',(row['id'],))
+ return added

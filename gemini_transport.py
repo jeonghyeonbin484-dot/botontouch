@@ -25,6 +25,7 @@ def generate_content(key,model,payload,timeout=60,max_retries=2):
     delay=2**index+random.uniform(0,0.2)
     if deadline-time.monotonic()>delay+1:time.sleep(delay);continue
    message='AI 서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요.' if error.code==503 else 'Gemini 요청 실패: HTTP '+str(error.code)+' / '+str(safe.get('status','오류'))
+   if error.code==429:message='Gemini 제공업체의 요청·토큰 할당량에 도달했습니다. Google AI Studio의 해당 프로젝트 사용량과 한도를 확인한 후 직접 다시 시도하세요.'
    raise GeminiTransportError(message,error.code,safe,attempts) from None
   except (TimeoutError,urllib.error.URLError) as error:
    timed_out=isinstance(error,TimeoutError) or isinstance(getattr(error,'reason',None),TimeoutError)
