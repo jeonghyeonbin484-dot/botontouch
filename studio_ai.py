@@ -4,10 +4,12 @@ SECTIONS=['담당 업무 개요','주요 업무 및 추진 현황','월별·정�
 MODES=('general','draft','qa','review')
 
 def schema(refs):
- ids={'type':'array','maxItems':30,'items':{'type':'string',**({'enum':list(refs)} if refs else {})}}
+ # 복잡한 중첩 배열 상한·반복 enum은 Gemini의 응답 규격 크기 제한에 걸릴 수 있다.
+ # 출처 ID와 길이 제한은 아래 서버 검증에서 동일하게 강제한다.
+ ids={'type':'array','items':{'type':'string'}}
  qa={'type':'object','properties':{'question':{'type':'string'},'reason':{'type':'string'},'recommended_answer':{'type':'string'},'supported':{'type':'boolean'},'source_ids':ids,'answer_source_ids':ids,'target_index':{'type':'integer'}},'required':['question','reason','recommended_answer','supported','source_ids','answer_source_ids','target_index']}
- draft={'type':'object','properties':{'title':{'type':'string'},'items':{'type':'array','minItems':1,'maxItems':30,'items':{'type':'object','properties':{'category':{'type':'string'},'text':{'type':'string'},'source_ids':ids},'required':['category','text','source_ids']}}},'required':['title','items']}
- return {'type':'object','properties':{'reply':{'type':'string'},'source_ids':ids,'proposed_draft':{'anyOf':[draft,{'type':'null'}]},'followup_questions':{'type':'array','maxItems':5,'items':{'type':'string'}},'qa':{'type':'array','maxItems':8,'items':qa}},'required':['reply','source_ids','proposed_draft','followup_questions','qa']}
+ draft={'type':'object','properties':{'title':{'type':'string'},'items':{'type':'array','items':{'type':'object','properties':{'category':{'type':'string'},'text':{'type':'string'},'source_ids':ids},'required':['category','text','source_ids']}}},'required':['title','items']}
+ return {'type':'object','properties':{'reply':{'type':'string'},'source_ids':ids,'proposed_draft':{**draft,'type':['object','null']},'followup_questions':{'type':'array','items':{'type':'string'}},'qa':{'type':'array','items':qa}},'required':['reply','source_ids','proposed_draft','followup_questions','qa']}
 
 def instructions():
  return ('너는 바통터치 업무 인수인계 대화 도우미다. 한국어로 간결하게 대화하고 사용자에게 다음 행동을 하나씩 안내하라. '
