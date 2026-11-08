@@ -17,16 +17,26 @@ function receivedProgress(r){
  let current=r.state==='completed'?4:r.state==='accepted'?4:r.state==='requested'?1:r.unanswered_count?3:r.question_count&&!r.answers_reviewed?3:!r.question_count?2:4;
  labels.forEach((label,i)=>{const step=node('li',states[i]?'done':i===current?'current':'');if(i===current&&!states[i])step.setAttribute('aria-current','step');step.append(node('strong','',label));let text=['수신됨',r.state==='requested'?'열람 전':'열람 확인',r.question_count?r.question_count+'건':noQuestionsFinal?'추가 질문 없음':'필요시 작성',r.question_count?(r.unanswered_count?'답변 대기 '+r.unanswered_count+'건':r.answers_reviewed?'확인 완료':'답변 도착 · 확인 필요'):noQuestionsFinal?'해당 없음':'질문 시 진행',r.state==='completed'?'최종 완료':r.state==='accepted'?'수락됨 · 인계자 완료 대기':'문서·답변 검토 후 수락'][i];step.append(node('small','',text));list.append(step);});return list;
 }
+function handoverRequestCard(r,box='received'){
+ const sent=box==='sent',card=node('article','request-list-row received-card'+(sent?' sent-card':''));card.dataset.requestId=String(r.id);
+ const heading=node('div','received-card-heading'),title=button(r.workspace_title||r.title,()=>void openAddressedRequest(r.id),'text-button received-title');title.dataset.requestControl='detail';
+ const label=r.recipient_account_pending?'전달 대기':r.state==='requested'?(sent?'인수자 열람 대기':'미확인'):r.state==='accepted'?'인수 수락 · 완료 대기':r.state_label;
+ heading.append(title,node('span','badge '+(r.state==='requested'?'received-unread':r.state==='needs_info'?'amber':'neutral'),label));card.append(heading);
+ if(r.workspace_title!==r.title)card.append(node('p','received-document-title',r.title));
+ const fields=[['인계자',inboxPerson(r.sender)],['인수자',inboxPerson(r.recipient)],['요청일',formatRequestTime(r.requested_at||r.created)],['전달 자료',r.attachment_count+'개'],['미답변 추가 질문',r.unanswered_count+'건']];
+ if(sent)fields.push(['인수자 검토',sentReviewLabel(r)]);
+ const meta=node('dl','received-meta');for(const [label,value] of fields){const field=node('div');field.append(node('dt','',label),node('dd','',value));meta.append(field);}card.append(meta,sent?sentRequestProgress(r):receivedProgress(r));
+ if(sent)card.append(node('p','sent-next-action',sentNextAction(r)));
+ const actions=node('div','received-card-actions'),preview=button(sent?'인수인계서 보기':'인수인계서 확인',()=>void previewReceivedRequest(r.id),'button '+(sent?'secondary':'primary')+' small');preview.dataset.requestControl='detail';
+ if(sent){const progress=button('진행 상황 확인',()=>void openAddressedRequest(r.id),'button primary small');progress.dataset.requestControl='detail';actions.append(progress,preview,button('대화하기',()=>void openChat(r.id),'button secondary small'));}
+ else actions.append(preview,button('대화하기',()=>void openChat(r.id),'button secondary small'),button('진행·질문 확인',()=>void openAddressedRequest(r.id),'text-button'));
+ card.append(actions);for(const control of card.querySelectorAll('[data-request-control]'))control.disabled=reqBusy.has(control.dataset.requestControl);return card;
+}
 function paintReceivedInbox(data){
  inboxCounts.replaceChildren();for(const [label,key] of [['미확인','unread'],['진행 중','active'],['전체','total']]){const item=node('div','received-count');item.append(node('span','',label),node('strong','',String(data[key])));inboxCounts.append(item);}
  const badge=$('nav-inbox-count');badge.textContent=String(data.unread);badge.title='미확인 '+data.unread+'건 · 전체 '+data.total+'건';badge.setAttribute('aria-label','미확인 요청 '+data.unread+'건');const nav=badge.closest('a');if(nav)nav.setAttribute('aria-label','받은 인수인계 · 미확인 '+data.unread+'건 · 전체 '+data.total+'건');
  inboxSummary.textContent='검색 결과 '+data.filtered_total+'건 / 전체 '+data.total+'건 · '+data.page+'페이지';inboxPage=data.page;
- const host=$('received-requests');host.replaceChildren();for(const r of data.items){
-  const card=node('article','request-list-row received-card');card.dataset.requestId=String(r.id);const heading=node('div','received-card-heading'),title=button(r.workspace_title||r.title,()=>void openAddressedRequest(r.id),'text-button received-title');title.dataset.requestControl='detail';heading.append(title,node('span','badge '+(r.state==='requested'?'received-unread':r.state==='needs_info'?'amber':'neutral'),r.state==='requested'?'미확인':r.state_label));card.append(heading);
-  if(r.workspace_title!==r.title)card.append(node('p','received-document-title',r.title));
-  const meta=node('dl','received-meta');for(const [label,value] of [['인계자',inboxPerson(r.sender)],['인수자',inboxPerson(r.recipient)],['요청일',formatRequestTime(r.created)],['전달 자료',r.attachment_count+'개'],['미답변 추가 질문',r.unanswered_count+'건']]){const field=node('div');field.append(node('dt','',label),node('dd','',value));meta.append(field);}card.append(meta,receivedProgress(r));
-  const actions=node('div','received-card-actions'),preview=button('인수인계서 확인',()=>void previewReceivedRequest(r.id),'button primary small');preview.dataset.requestControl='detail';actions.append(preview,button('대화하기',()=>void openChat(r.id),'button secondary small'),button('진행·질문 확인',()=>void openAddressedRequest(r.id),'text-button'));card.append(actions);host.append(card);
- }
+ const host=$('received-requests');host.replaceChildren();for(const r of data.items)host.append(handoverRequestCard(r));
  if(!data.items.length)host.append(node('p','received-empty',data.total?'검색 조건에 맞는 요청이 없습니다. 검색어나 상태를 바꿔 보세요.':'아직 전달받은 인수인계 요청이 없습니다.'));
  inboxPages.replaceChildren();for(const [label,delta] of [['이전',-1],['다음',1]]){const b=button(label,()=>{inboxPage+=delta;void loadReceivedInbox();},'button secondary small');b.disabled=delta<0?data.page<=1:data.page*data.page_size>=data.filtered_total;inboxPages.append(b);}inboxPages.hidden=data.filtered_total<=data.page_size;inboxError.hidden=true;
 }
@@ -66,6 +76,7 @@ function syncReceiptProgress(r){
 const receiptDisplayedTokens=new Map();
 const receivedQuestionsOriginal=loadJourneyQuestions;loadJourneyQuestions=async function(requestId=null,host='journey-gap-list'){
  const displayed=await receivedQuestionsOriginal(requestId,host);if(!requestId||requestSelection?.id!==requestId||!displayed)return;receiptDisplayedTokens.set(requestId,{token:displayed.answer_token,revision:displayed.request_revision});
+ const followups=$(host).querySelector('.qa-legacy');if(followups){followups.open=true;followups.querySelector('summary').textContent='추가 확인 질문·답변 '+displayed.questions.filter(q=>q.qa_kind!=='expected').length+'건';}
  try{const fresh=await api('/api/requests/'+requestId);if(requestSelection?.id!==requestId)return;if(fresh.revision!==requestSelection.revision){syncReceiptProgress(requestSelection);message('request-message','인계자가 새 버전을 전달했습니다. 새로 불러오기를 눌러 최신 문서와 답변을 확인하세요.','warning');return;}requestSelection=fresh;syncReceiptProgress(fresh);void loadReceivedInbox(true);}catch(e){message('request-message','진행 상태를 다시 확인하지 못했습니다. '+e.message,'error');}
 };
 function pollReceivedInbox(){clearTimeout(inboxPoll);inboxPoll=setTimeout(async()=>{if(!document.hidden)await loadReceivedInbox();pollReceivedInbox();},Math.min(300000,60000*2**Math.min(inboxFailures,3)));}

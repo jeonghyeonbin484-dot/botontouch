@@ -29,11 +29,12 @@ def list_requests(db,user,query,kind):
  counts=db.execute("SELECT count(*) AS total,sum(state='requested') AS unread,sum(state!='completed') AS active,sum(state IN ('requested','reviewing')) AS pending FROM handover_requests WHERE "+scope,(user['id'],)).fetchone()
  matched=db.execute('SELECT count(*) FROM handover_requests WHERE '+where,args).fetchone()[0]
  page=min(page,max(1,(matched+size-1)//size))
- order="json_extract(payload,'$.title') COLLATE NOCASE ASC,id DESC" if sort=='title' else sort+' DESC,id DESC'
- rows=db.execute("SELECT id,workspace_id,draft_id,recipient_account,state,reason,revision,created,updated,accepted_at,completed_at,version_id,sender_snapshot,recipient_snapshot,json_array_length(documents) AS attachment_count,json_object('title',json_extract(payload,'$.title'),'workspace',json_extract(payload,'$.workspace')) AS payload FROM handover_requests WHERE "+where+' ORDER BY '+order+' LIMIT ? OFFSET ?',args+[size,(page-1)*size]).fetchall()
+ order="json_extract(payload,'$.title') COLLATE NOCASE ASC,id DESC" if sort=='title' else ('requested_at' if sort=='created' else sort)+' DESC,id DESC'
+ rows=db.execute("SELECT id,workspace_id,draft_id,recipient_account,state,reason,revision,created,updated,accepted_at,completed_at,version_id,sender_snapshot,recipient_snapshot,coalesce((SELECT s.created FROM request_snapshots s WHERE s.request_id=handover_requests.id AND s.revision=handover_requests.revision),created) AS requested_at,json_array_length(documents) AS attachment_count,json_object('title',json_extract(payload,'$.title'),'workspace',json_extract(payload,'$.workspace')) AS payload FROM handover_requests WHERE "+where+' ORDER BY '+order+' LIMIT ? OFFSET ?',args+[size,(page-1)*size]).fetchall()
  items=[]
  for row in rows:
-  payload=json.loads(row['payload']);items.append(requests.summary(row)|metrics(db,row)|{'workspace_title':(payload.get('workspace') or {}).get('title') or payload['title'],'attachment_count':row['attachment_count']})
+  payload=json.loads(row['payload']);workspace=payload.get('workspace');workspace=workspace if isinstance(workspace,dict) else {}
+  items.append(requests.summary(row)|metrics(db,row)|{'workspace_title':workspace.get('title') or payload['title'],'requested_at':row['requested_at'],'attachment_count':row['attachment_count']})
  return {'user_id':user['id'],'box':kind,'items':items,'pending':counts['pending'] or 0,'unread':counts['unread'] or 0,'active':counts['active'] or 0,'total':counts['total'],'filtered_total':matched,'page':page,'page_size':size}
 
 
