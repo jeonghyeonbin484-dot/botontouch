@@ -4,7 +4,7 @@ const studioParagraphChip=node('section','studio-paragraph-selection');studioPar
 function studioSelectParagraph(target){
  if(studioBusy)return;studioParagraphSelection=target;studioParagraphChip.replaceChildren(node('strong','','선택한 원문 문단만 수정합니다'),node('p','',target.before));
  const actions=node('div','form-actions');for(const text of ['더 간결하게','공문서 문체로','구체적으로 작성'])actions.append(button(text,()=>{$('studio-input').value=text;$('studio-input').focus();},'button secondary small'));
- actions.append(button('선택 해제',studioClearParagraph,'text-button'));studioParagraphChip.append(actions);studioParagraphChip.hidden=false;studioPage.dataset.tab='chat';studioControls();$('studio-input').focus();
+ actions.append(button('선택 해제',studioClearParagraph,'text-button'));studioParagraphChip.append(actions);studioParagraphChip.hidden=false;studioControls();if(document.querySelector('.studio-paper-expanded')){window.dispatchEvent(new Event('studio-paragraph-selected'));return;}studioPage.dataset.tab='chat';$('studio-input').focus();
 }
 function studioClearParagraph(){studioParagraphSelection=null;studioParagraphChip.hidden=true;studioParagraphChip.replaceChildren();studioControls();}
 const studioParagraphControlsOriginal=studioControls;studioControls=function(){studioParagraphControlsOriginal();if(studioParagraphSelection)$('studio-mode').disabled=true;studioParagraphChip.querySelectorAll('button').forEach(b=>b.disabled=studioBusy);};
@@ -17,7 +17,7 @@ const studioParagraphSendOriginal=studioSend;studioSend=async function(retry){if
 async function studioParagraphAction(message,action){const sid=studioData.session.id;await studioOperation(async()=>{studioData=await post('/api/studio/sessions/'+sid+'/'+action,{message_id:message.id});studioRender();if(action!=='paragraph-reject'){await studioList();studioNotice(action==='paragraph-undo'?'선택 문단을 이전 내용으로 되돌렸습니다. 이력은 유지됩니다.':'선택 문단의 승인된 수정만 저장했습니다. 원문과 비교해 다시 검토하세요.');}});}
 const studioParagraphRenderOriginal=studioRender;studioRender=function(options={}){
  studioParagraphRenderOriginal(options);
- if(studioParagraphSelection&&(studioData?.session.id!==studioParagraphSelection.session_id||studioData?.draft?.edit_token!==studioParagraphSelection.baseline))studioClearParagraph();
+ if(studioParagraphSelection&&(studioData?.session.id!==studioParagraphSelection.session_id||studioData?.draft?.id!==studioParagraphSelection.draft_id||studioData?.session.workspace_id!==studioParagraphSelection.workspace_id||studioData?.draft?.edit_token!==studioParagraphSelection.baseline))studioClearParagraph();
  for(const message of studioData?.messages||[]){const edit=message.result?.paragraph_edit;if(!edit)continue;const host=$('studio-history').querySelector('[data-message-id="'+message.id+'"]');if(!host)continue;
   const compare=node('section','studio-paragraph-comparison');compare.setAttribute('aria-label','선택 문단 수정 전후 비교');
   for(const [label,text] of [['수정 전',edit.before],['수정 후',edit.after]]){const group=node('div');group.append(node('strong','',label),node('p','',text));compare.append(group);}

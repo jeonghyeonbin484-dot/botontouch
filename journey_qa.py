@@ -35,13 +35,16 @@ def handle(handler,factory,method):
     if not isinstance(attachments,list) or len(attachments)>10 or any(type(i) is not int for i in attachments):raise ValueError('관련 자료를 최대 10개까지 선택하세요.')
     for doc_id in attachments:
      if not db.execute('SELECT 1 FROM documents WHERE id=? AND workspace_id=? AND deleted=0',(doc_id,workspace)).fetchone():raise auth_control.AccessError(403,'이 문서의 업무자료만 첨부할 수 있습니다.')
-    state='resolved' if reply.strip() else 'open';db.execute('BEGIN IMMEDIATE')
+    state=body.get('state') or ('resolved' if reply.strip() else 'open')
+    if state not in ('open','resolved','not_applicable','deferred') or state=='resolved' and not reply.strip():raise ValueError('답변과 처리 상태를 확인하세요.')
+    if state=='not_applicable':included=False
+    db.execute('BEGIN IMMEDIATE')
     if q:
      expected=body.get('revision',q['qa_revision'])
      if type(expected) is not int or expected!=q['qa_revision']:raise auth_control.AccessError(409,'다른 화면에서 수정한 질문입니다. 현재 입력을 보관하고 다시 불러오세요.')
      changed=db.execute("UPDATE followups SET question=?,reply=?,state=?,qa_included=?,qa_documents=?,item_index=?,qa_revision=qa_revision+1,updated=CURRENT_TIMESTAMP,application='none',proposal=NULL WHERE id=? AND qa_revision=?",(question.strip(),reply,state,int(included),json.dumps(attachments),index,q['id'],expected)).rowcount
      if changed!=1:raise auth_control.AccessError(409,'다른 화면에서 질문이 변경됐습니다.')
-     event(db,q['id'],user,'예상 Q&A 수정',{'before':{'question':q['question'],'reply':q['reply'],'included':bool(q['qa_included'])},'after':{'question':question.strip(),'reply':reply,'included':included,'document_ids':attachments}})
+     event(db,q['id'],user,'예상 Q&A 수정',{'before':{'question':q['question'],'reply':q['reply'],'state':q['state'],'included':bool(q['qa_included'])},'after':{'question':question.strip(),'reply':reply,'state':state,'included':included,'document_ids':attachments}})
     else:
      key=db.execute("INSERT INTO followups(workspace_id,draft_id,item_index,question,reply,state,actor,origin,qa_kind,qa_included,qa_documents) VALUES(?,?,?,?,?,?,?,'manual','expected',?,?)",(workspace,draft_id,index,question.strip(),reply,state,user['username'],int(included),json.dumps(attachments))).lastrowid;event(db,key,user,'직접 예상 질문 작성',{'question':question.strip(),'reply':reply,'included':included})
     db.commit();handler.respond(200,{'saved':True,'questions':question_rows(db,draft_id=draft_id)});return True

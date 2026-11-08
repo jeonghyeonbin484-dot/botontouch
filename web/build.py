@@ -24,6 +24,8 @@ js += '\n' + (ROOT / 'studio-document-preview.js').read_text(encoding='utf-8-sig
 js += '\n' + (ROOT / 'studio-paragraphs.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'user-manual.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'workbench.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'journey-refinement.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'studio-editing-ux.js').read_text(encoding='utf-8-sig')
 assert '</script' not in js.lower()
 assert shell.count('/* APP_STYLE */') == shell.count('/* APP_SCRIPT */') == 1
 output = shell.replace('/* APP_STYLE */', css).replace('/* APP_SCRIPT */', js)

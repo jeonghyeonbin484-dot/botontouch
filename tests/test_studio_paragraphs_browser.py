@@ -41,7 +41,7 @@ class ParagraphBrowserTests(unittest.TestCase):
      page.wait_for_function("!document.fullscreenElement&&!document.querySelector('.studio-paper-expanded')")
      # Click a rendered paragraph, then its explicit action inside the sandboxed frame.
      frame.locator('[data-edit-id]').first.click()
-     frame.get_by_role('button',name='AI에게 수정 요청',exact=True).click()
+     frame.get_by_role('button',name='AI 수정 요청',exact=True).click()
      page.get_by_role('button',name='더 간결하게',exact=True).click();page.locator('#studio-send').click()
      compare=page.locator('.studio-paragraph-comparison').last
      compare.get_by_role('button',name='수정 반영',exact=True).wait_for()

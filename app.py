@@ -57,6 +57,7 @@ def connect():
     handover_journey.ensure(db)
     __import__('ai_studio').ensure(db)
     __import__('workbench').ensure(db)
+    __import__('journey_authoring').ensure(db)
     for table in ('documents', 'drafts', 'questions'):
         if 'workspace_id' not in {r['name'] for r in db.execute(f'PRAGMA table_info({table})')}:
             db.execute(f'ALTER TABLE {table} ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 1')
@@ -185,6 +186,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_requests.handle(self, connect, 'GET', source_changes):
             return
+        if __import__('journey_authoring').handle(self,connect,'GET'):return
         if __import__('workbench').handle(self,connect,'GET'):return
         if __import__('resource_library').handle(self,connect,'GET'):return
         if __import__('ai_studio').handle(self,connect,'GET'):return
@@ -314,6 +316,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_requests.handle(self, connect, 'POST', source_changes):
             return
+        if __import__('journey_authoring').handle(self,connect,'POST'):return
         if __import__('workbench').handle(self,connect,'POST'):return
         if __import__('ai_studio').handle(self,connect,'POST'):return
         if handover_journey.handle(self, connect, 'POST'):
@@ -481,7 +484,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             size = int(self.headers.get('Content-Length', '0'))
             if size <= 0 or size > MAX_FILE:
-                raise ValueError('파일은 0바이트 초과, 10MB 이하여야 합니다.')
+                raise ValueError('파일은 0바이트 초과, 4MB 이하여야 합니다.')
             name = self.headers.get('X-File-Name', '')
             from urllib.parse import unquote
             name = Path(unquote(name)).name
