@@ -128,8 +128,9 @@ def handle(handler,factory,method):
                     last=db.execute('SELECT body,created,id FROM request_chat_messages WHERE request_id=? AND recipient_employee=? ORDER BY id DESC LIMIT 1',(row['id'],row['recipient_employee'])).fetchone()
                     unread=db.execute('SELECT count(*) FROM request_chat_messages m LEFT JOIN request_chat_reads s ON s.request_id=m.request_id AND s.user_id=? WHERE m.request_id=? AND m.recipient_employee=? AND m.sender_id!=? AND m.id>coalesce(s.last_id,0)',(user['id'],row['id'],row['recipient_employee'],user['id'])).fetchone()[0]
                     sender=user['id']==row['sender_account']
-                    rooms.append({'request_id':row['id'],'title':json.loads(row['payload']).get('title',''),'peer':json.loads(row['recipient_snapshot'] if sender else row['sender_snapshot']),'sender':sender,'unread':unread,'last_id':last['id'] if last else 0,'preview':(last['body'][:120] or '첨부파일') if last else '첫 대화를 시작하세요.','last_time':last['created'] if last else row['created']})
-                rooms.sort(key=lambda r:(r['last_time'],r['request_id']),reverse=True)
+                    payload=json.loads(row['payload']);workspace=payload.get('workspace');workspace=workspace if isinstance(workspace,dict) else {}
+                    rooms.append({'request_id':row['id'],'title':payload.get('title',''),'workspace_title':workspace.get('title') or payload.get('title',''),'peer':json.loads(row['recipient_snapshot'] if sender else row['sender_snapshot']),'sender':sender,'unread':unread,'last_id':last['id'] if last else 0,'preview':(last['body'][:120] or '첨부파일') if last else '첫 대화를 시작하세요.','last_time':last['created'] if last else row['created'],'last_message_at':last['created'] if last else None,'revision':row['revision'],'state':row['state'],**__import__('request_inbox').metrics(db,row)})
+                rooms.sort(key=lambda r:(bool(r['last_id']),r['last_time'].replace('T',' ').removesuffix('Z'),r['last_id'],r['request_id']),reverse=True)
                 db.commit();handler.respond(200,{'rooms':rooms,'total':sum(r['unread'] for r in rooms)});return True
             if path=='/api/chat/unread' and method=='GET':
                 import handover_requests
@@ -156,10 +157,13 @@ def handle(handler,factory,method):
                     validate_file(name,raw,limit);body={'nonce':handler.headers.get('X-Chat-Nonce','')}
                 else:body=auth_control.read_json(handler,20000)
                 db.execute('BEGIN IMMEDIATE');row=access(db,user,rid)
+                expected=body.get('room_key',handler.headers.get('X-Chat-Room-Key'))
+                if expected is not None and expected!=str(rid)+':'+row['recipient_employee']:raise auth_control.AccessError(409,'인수자가 변경되었습니다. 최신 대화방을 다시 선택하세요. 입력 내용은 유지됩니다.')
                 if kind=='read':
                     upto=positive(body.get('last_id'))
                     maximum=db.execute('SELECT coalesce(max(id),0) FROM request_chat_messages WHERE request_id=? AND recipient_employee=?',(rid,row['recipient_employee'])).fetchone()[0]
                     if upto>maximum:raise ValueError('실제로 확인한 메시지만 읽음 처리할 수 있습니다.')
+                    if upto and not db.execute('SELECT 1 FROM request_chat_messages WHERE id=? AND request_id=? AND recipient_employee=?',(upto,rid,row['recipient_employee'])).fetchone():raise ValueError('이 대화방에서 확인한 메시지만 읽음 처리할 수 있습니다.')
                     db.execute('INSERT INTO request_chat_reads VALUES(?,?,?) ON CONFLICT(request_id,user_id) DO UPDATE SET last_id=max(last_id,excluded.last_id)',(rid,user['id'],upto));result={'saved':True}
                 elif kind=='knowledge':
                     mid=positive(body.get('message_id'));m=db.execute('SELECT id FROM request_chat_messages WHERE request_id=? AND recipient_employee=? AND id=?',(rid,row['recipient_employee'],mid)).fetchone()
@@ -187,7 +191,7 @@ def handle(handler,factory,method):
             else:raise ValueError('대화방 요청 방식을 확인하세요.')
         # No open transaction while waiting. Re-check the session and participant on each tick.
         handler.send_response(200);handler.send_header('Content-Type','text/event-stream; charset=utf-8');handler.send_header('Cache-Control','no-store');handler.send_header('X-Accel-Buffering','no');handler.send_header('Connection','close');handler.end_headers();started=True
-        previous=None;end=time.monotonic()+(0 if os.environ.get('VERCEL') else 20)
+        previous=None;end=time.monotonic()+(0 if os.environ.get('VERCEL') or getattr(handler,'capture',False) else 20)
         while True:
             with closing(sqlite3.connect('file:'+quote(db_path.replace('\\','/'),safe='/:')+'?mode=rw',uri=True,timeout=5)) as db:
                 db.row_factory=sqlite3.Row

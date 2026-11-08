@@ -63,6 +63,7 @@ def handle(handler,factory,method):
    else:
     workspace=int(body.get('workspace_id') or handler.headers.get('X-Workspace-Id','1'));auth_control.workspace_access(db,user,workspace,method=='POST');draft_id=int(body.get('draft_id') or 0)
    if req and path not in ('/api/journey/questions','/api/journey/question','/api/journey/answer','/api/journey/propose','/api/journey/apply'):raise auth_control.AccessError(403,'요청 상세에서는 해당 요청의 질문·답변만 처리할 수 있습니다.')
+   if req and method=='POST' and body.get('request_revision') is not None and (type(body['request_revision']) is not int or body['request_revision']!=req['revision']):raise auth_control.AccessError(409,'요청이 다시 전달되었습니다. 최신 문서와 질문을 확인하세요.')
    if path=='/api/journey/library' and method=='GET':
     rows=[dict(r) for r in db.execute('SELECT d.id,d.name,d.workspace_id,w.title AS workspace_title,d.revision FROM documents d JOIN workspaces w ON w.id=d.workspace_id WHERE d.deleted=0 AND d.workspace_id!=? AND instr(lower(d.name),lower(?))>0 ORDER BY d.id DESC',(workspace,str(body.get('q',''))[:100])) if auth_control.permission(db,user,r['workspace_id'])];handler.respond(200,{'items':rows[:200],'total':len(rows)});return True
    if path=='/api/journey/import' and method=='POST':
@@ -124,6 +125,7 @@ def handle(handler,factory,method):
     answer=body.get('reply','');status=body.get('state','resolved')
     if status not in ('open','resolved','deferred','not_applicable') or not isinstance(answer,str) or len(answer)>8000 or status=='resolved' and not answer.strip():raise ValueError('답변과 처리 상태를 확인하세요.')
     db.execute('BEGIN IMMEDIATE');q=db.execute('SELECT * FROM followups WHERE id=?',(q['id'],)).fetchone()
+    if 'expected_reply' in body and (body['expected_reply']!=q['reply'] or body.get('expected_state')!=q['state']):raise auth_control.AccessError(409,'다른 화면에서 답변이 변경되었습니다. 입력은 유지됩니다. 최신 답변을 확인하세요.')
     event(db,q['id'],user,'답변·상태 변경',{'before':{'reply':q['reply'],'state':q['state']},'after':{'reply':answer,'state':status}})
     db.execute("UPDATE followups SET reply=?,state=?,reply_actor=?,proposal=NULL,application='none',updated=CURRENT_TIMESTAMP WHERE id=?",(answer,status,user['username'],q['id']));db.commit();handler.respond(200,{'saved':True});return True
    if path=='/api/journey/propose':
