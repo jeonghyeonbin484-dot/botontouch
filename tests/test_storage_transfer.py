@@ -34,6 +34,6 @@ class TransferTests(unittest.TestCase):
    cloud_store.reset_runtime_cache();self.f.call('/api/chat/unread',client=self.a)
   cold=self.f.memory.downloaded_bytes-start
   self.assertEqual(warm,0);self.assertGreater(cold,0)
-  out=Path(__file__).resolve().parents[3]/'artifacts/final-release/storage-transfer-measurement.json'
+  out=Path(__file__).resolve().parents[1]/'artifacts/final-release/storage-transfer-measurement.json';out.parent.mkdir(parents=True,exist_ok=True)
   out.write_text(json.dumps({'requests':20,'warm_payload_bytes':warm,'cold_payload_bytes':cold,'scope':'가상 DB의 스냅샷 전송량만 측정. SQL 메타데이터·실제 서비스 트래픽은 별도.'},ensure_ascii=False,indent=2),encoding='utf-8')
 if __name__=='__main__':unittest.main()

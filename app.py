@@ -56,6 +56,7 @@ def connect():
     __import__('handover_chat').ensure(db)
     handover_journey.ensure(db)
     __import__('ai_studio').ensure(db)
+    __import__('workbench').ensure(db)
     for table in ('documents', 'drafts', 'questions'):
         if 'workspace_id' not in {r['name'] for r in db.execute(f'PRAGMA table_info({table})')}:
             db.execute(f'ALTER TABLE {table} ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 1')
@@ -184,6 +185,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_requests.handle(self, connect, 'GET', source_changes):
             return
+        if __import__('workbench').handle(self,connect,'GET'):return
         if __import__('resource_library').handle(self,connect,'GET'):return
         if __import__('ai_studio').handle(self,connect,'GET'):return
         if handover_journey.handle(self, connect, 'GET'):
@@ -312,6 +314,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_requests.handle(self, connect, 'POST', source_changes):
             return
+        if __import__('workbench').handle(self,connect,'POST'):return
         if __import__('ai_studio').handle(self,connect,'POST'):return
         if handover_journey.handle(self, connect, 'POST'):
             return
