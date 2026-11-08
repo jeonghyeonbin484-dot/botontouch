@@ -1,0 +1,8 @@
+{
+  "source": "templates/namyangju-report.hwpx",
+  "source_sha256": "86314d7943cf17b36b8770e60abfa9befa315add6393a2caf04125c7a70b7aa8",
+  "pdf_sha256": "3fb985da4e90f5bba6ac956a8a1fdbc146aabaa2b0a22aab7d7c58675804c17f",
+  "pages": 1,
+  "converter": "한컴오피스 HWPFrame.HwpObject PDF 저장",
+  "notice": "저장소에 포함된 보고서 서식 참고용 원본입니다. 저장된 인수인계서 본문 미리보기와 다릅니다."
+}

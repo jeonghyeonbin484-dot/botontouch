@@ -184,6 +184,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if handover_requests.handle(self, connect, 'GET', source_changes):
             return
+        if __import__('resource_library').handle(self,connect,'GET'):return
         if __import__('ai_studio').handle(self,connect,'GET'):return
         if handover_journey.handle(self, connect, 'GET'):
             return

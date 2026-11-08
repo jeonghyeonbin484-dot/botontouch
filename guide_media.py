@@ -1,14 +1,14 @@
-"""가상자료 사용 안내 영상만 제공. DB·사용자 자료를 읽지 않는다."""
+"""안내 영상·매뉴얼·고정 서식 참고파일만 제공. DB·사용자 자료를 읽지 않는다."""
 from pathlib import Path
 import re
-TYPES={'.mp4':'video/mp4','.jpg':'image/jpeg','.vtt':'text/vtt; charset=utf-8'}
+TYPES={'.pdf':'application/pdf','.hwpx':'application/hwp+zip','.mjs':'text/javascript; charset=utf-8','.png':'image/png','.mp4':'video/mp4','.jpg':'image/jpeg','.vtt':'text/vtt; charset=utf-8'}
 def serve(handler,root):
  path=handler.path.split('?',1)[0]
  if not path.startswith('/media/'):return False
  name=path.removeprefix('/media/')
- if not re.fullmatch(r'botontouch-guide-v[0-9]+\.(mp4|jpg|vtt)',name):handler.respond(404,{'error':'안내 영상 파일이 없습니다.'});return True
+ if not (re.fullmatch(r'botontouch-guide-v[0-9]+\.(mp4|jpg|vtt)',name) or name in {'namyangju-template.pdf','namyangju-template.hwpx','pdfjs/pdf.min.mjs','pdfjs/pdf.worker.min.mjs'} or re.fullmatch(r'manual/[a-z0-9-]+\.png',name)):handler.respond(404,{'error':'안내 파일이 없습니다.'});return True
  file=Path(root)/'public/media'/name
- if not file.is_file():handler.respond(404,{'error':'안내 영상을 준비 중입니다.'});return True
+ if not file.is_file():handler.respond(404,{'error':'안내 파일을 준비 중입니다.'});return True
  size=file.stat().st_size;start=0;end=size-1;status=200;requested=handler.headers.get('Range')
  if requested:
   match=re.fullmatch(r'bytes=(\d*)-(\d*)',requested)
