@@ -19,6 +19,7 @@ class DocumentPreviewBrowserTests(unittest.TestCase):
    draft['items'][0]['text']='\n'.join('가상 실제 작성 내용 %03d: 업무 처리 절차와 확인 사항을 인계합니다.'%i for i in range(90))
    draft=f.call('/api/drafts/save',draft,client)
    f.call('/api/journey/progress',{'step':5,'draft_id':draft['id']},client)
+   f.call('/api/studio/sessions',{'workspace_id':1,'draft_id':draft['id'],'title':'가상 미리보기 검증'},client)
    with sync_playwright() as pw:
     browser=pw.chromium.launch(executable_path=os.environ.get('TEST_BROWSER',r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'),headless=True)
     page=browser.new_page(viewport={'width':1440,'height':1000},accept_downloads=True)
@@ -55,6 +56,9 @@ class DocumentPreviewBrowserTests(unittest.TestCase):
     page.get_by_role('button',name='닫기',exact=True).click()
     page.evaluate("()=>{location.hash='studio';}")
     page.locator('#studio-reset').wait_for(state='visible')
+    page.locator('.studio-paper-viewer[data-ready=true]').wait_for(state='attached')
+    paper=page.frame_locator('.studio-paper-frame')
+    self.assertEqual(paper.locator('#pages').evaluate("e=>getComputedStyle(e).zoom"),'1')
     self.assertEqual(page.locator('.topbar-right #studio-reset').count(),0)
     for width in (1440,712,390):
      page.set_viewport_size({'width':width,'height':900})
