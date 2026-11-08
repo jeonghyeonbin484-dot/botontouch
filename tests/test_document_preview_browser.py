@@ -37,6 +37,8 @@ class DocumentPreviewBrowserTests(unittest.TestCase):
     frame.locator('html[data-ready=true]').wait_for()
     self.assertGreater(frame.locator('.report-page').count(),2)
     self.assertIn('가상 실제 작성 내용 089',frame.locator('body').inner_text())
+    for removed in ('관련 문서 및 참고자료','인계자·인수자 확인','업무 인계·인수 요약서'):
+     self.assertNotIn(removed,frame.locator('body').inner_text())
     self.assertEqual(frame.locator('.report-brand img').count(),2)
     artifacts=Path('artifacts/document-preview');artifacts.mkdir(parents=True,exist_ok=True)
     page.screenshot(path=str(artifacts/'desktop-preview.png'))
@@ -44,6 +46,8 @@ class DocumentPreviewBrowserTests(unittest.TestCase):
      page.get_by_role('button',name='같은 내용 HWPX 다운로드').click()
     with zipfile.ZipFile(download.value.path()) as z:
      self.assertIn('가상 실제 작성 내용 089',z.read('Preview/PrvText.txt').decode())
+     for removed in ('관련 문서 및 참고자료','인계자·인수자 확인','업무 인계·인수 요약서'):
+      self.assertNotIn(removed,z.read('Preview/PrvText.txt').decode())
     page.get_by_role('button',name='닫기',exact=True).click()
     page.evaluate("()=>{state.draft.items[0].text='저장 전 최신 수정 내용';state.draftDirty=true;}")
     page.get_by_role('button',name='문서 미리보기',exact=True).last.click()

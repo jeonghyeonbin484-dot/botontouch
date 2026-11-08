@@ -3,6 +3,45 @@ import re
 ALIASES={1:['담당업무 현황','담당 업무','담당 업무 개요','업무 개요'],2:['주요 업무계획 및 진행사항','주요 업무 및 추진 현황','추진현황','추진 상황','업무계획','진행사항','협의 부서 및 담당자','협의사항'],3:['현안사항 및 문제점','현안사항','문제점','진행 중인 현안 및 향후 조치사항','진행 중인 업무 및 현안'],4:['주요 미결사항','미결사항','전임자 확인이 필요한 사항','확인 필요사항','향후 조치사항'],5:['주요 일정 및 실무 노하우','월별·정기 업무 일정','주요 일정','처리절차','업무 주기','실무 노하우','후임자 유의사항','유의사항','주의사항'],6:['관련 문서 및 참고자료','관련 문서','참고자료'],8:['예산·물품','예산','물품','계약 현황']}
 def key(value):return re.sub(r'[\s\W_]+','',str(value)).casefold()
 def paragraph_key(value):return re.sub(r'\s+',' ',str(value)).strip().rstrip('.。')
+
+def concise_bullets(value,limit=64):
+ """출력에서만 군더더기를 줄이고 긴 복문을 짧은 업무 단위로 나눈다.
+
+ 날짜·금액·부정·조건을 임의로 자르거나 외부 AI로 전송하지 않는다.
+ 분리할 수 없는 긴 문장은 의미 보존을 우선해 두 줄을 넘을 수 있다.
+ """
+ import unicodedata
+ def width(text):return sum(1 if unicodedata.east_asian_width(c) in ('W','F') else .5 for c in text)
+ def shorten(text):
+  text=re.sub(r'^\s*(?:또한|아울러|그리고)[,，]?\s+','',text).strip()
+  text=text.replace('담당자로서 ','담당: ').replace('을 활용하여 ','으로 ').replace('를 활용하여 ','로 ')
+  text=text.replace(' 및 ','·')
+  for old,new in [('하는 업무를 지속적으로 수행하고 있습니다','합니다'),('하는 업무를 수행하고 있습니다','합니다'),(' 업무를 수행하고 있습니다',''),(' 업무를 수행합니다',''),('하고 있습니다','합니다')]:text=text.replace(old,new)
+  return text.strip()
+ text=re.sub(r'\s+',' ',str(value)).strip()
+ if width(text)<=limit:return [text] if text else []
+ result=[]
+ for sentence in re.split(r'(?<=[.!?。])\s+',text):
+  sentence=shorten(sentence)
+  if width(sentence)<=limit:result.append(sentence);continue
+  if re.search(r'경우|때에는|때만|이후|이전|한해|조건|않|금지|말아야|예정|미정|추정',sentence):
+   result.append(sentence);continue
+  # 숫자 쉼표, 소수점, 괄호 속 조건은 분리하지 않는다.
+  clauses=[];start=0;depth=0
+  for match in re.finditer(r'[()]|,\s+|하고\s+',sentence):
+   token=match.group()
+   if token=='(':depth+=1
+   elif token==')':depth=max(0,depth-1)
+   elif not depth:
+    clauses.append(sentence[start:match.start()].strip());start=match.end()
+  clauses.append(sentence[start:].strip())
+  current=''
+  for clause in filter(None,clauses):
+   candidate=(current+', '+clause) if current else clause
+   if current and width(candidate)>limit:result.append(current);current=clause
+   else:current=candidate
+  if current:result.append(current)
+ return list(dict.fromkeys(t for t in result if t))
 def work_name(draft):
  title=str(draft.get('title') or (draft.get('workspace') or {}).get('title') or '업무명 확인 필요').strip()
  return re.sub(r'\s*(?:업무\s*)?인수인계서\s*$','',title).strip() or title
@@ -50,11 +89,14 @@ def money_fact(text,draft,ids):
 def prepare(draft):
  groups={i:[] for i in range(1,7)};budget=[];seen={};removed=0;known={key(a):i for i,ls in ALIASES.items() for a in ls}
  ignored={key(work_name(draft)),key(draft.get('title','')),key('업무 인수인계서'),key('인수인계 개요'),key('인계자·인수자 확인'),key('업무 인계·인수 요약서')}
+ excluded={key('인계자·인수자 확인'),key('업무 인계·인수 요약서')}
  for item in draft.get('items',[]):
   category=str(item.get('category',''));target=classification(category)
+  if key(re.sub(r'^\d+[.)]\s*','',strip_marker(category))) in excluded:continue
   for raw in str(item.get('text','')).splitlines():
    text=strip_marker(raw)
    if not text or re.match(r'^출처\s*[:：]',text):continue
+   if key(re.sub(r'^\d+[.)]\s*','',text).rstrip(':：')) in excluded:target=None;continue
    if key(text) in ignored:removed+=1;continue
    named=re.match(r'^(?:업무명|문서 제목|제목)[:：]\s*(.+)$',text)
    if named and key(named[1]) in ignored:removed+=1;continue
@@ -63,6 +105,7 @@ def prepare(draft):
    if key(text.rstrip(':：')) in known:target=known[key(text.rstrip(':：'))];continue
    colon=re.match(r'^([^:：]{1,45})[:：]\s*(.+)$',text)
    if colon and key(colon[1]) in known:target=known[key(colon[1])];text=colon[2].strip()
+   if target is None:continue
    if unknown(text):continue
    normalized=paragraph_key(text)
    if normalized in seen:

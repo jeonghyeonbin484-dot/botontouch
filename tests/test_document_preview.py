@@ -21,7 +21,7 @@ class OfficialDocumentPreviewTests(unittest.TestCase):
   html=preview.wfile.getvalue().decode()
   self.assertIn('실제 저장 내용',html)
   self.assertNotIn('출처: [1]',html)
-  self.assertIn('업무 인계·인수 요약서',html)
+  self.assertNotIn('업무 인계·인수 요약서',html)
   self.assertIn('data:image/png;base64,',html)
   fingerprint=preview.headers['X-Report-Fingerprint']
   download=Response('/api/drafts/1/export.hwpx?view=hwpx&report_hash='+fingerprint)

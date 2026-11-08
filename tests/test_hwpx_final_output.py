@@ -10,7 +10,7 @@ class FinalOutputTests(unittest.TestCase):
     if n.endswith(('.xml','.hpf','.rdf')):E.fromstring(z.read(n))
    text=''.join(E.fromstring(z.read('Contents/section0.xml')).itertext())
    self.assertNotIn('출처:',text);self.assertNotIn('[13]',text);self.assertIn('재고 13개 확인',text);self.assertIn('구매 후 검수',text)
-   self.assertIn('업무 인계·인수 요약서',text)
+   self.assertNotIn('업무 인계·인수 요약서',text)
    with zipfile.ZipFile(export_hwpx.TEMPLATE) as t:
     from test_hwpx_style_160 import assert_header_extensions_only
     assert_header_extensions_only(self,z.read('Contents/header.xml'),t.read('Contents/header.xml'))
