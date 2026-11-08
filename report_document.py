@@ -13,12 +13,12 @@ def clean(value):
 def classify(name):
  return __import__('report_content').classification(name)
 
-def build(draft):
+def build(draft,editable=False):
  import report_content as content
- blocks=[];prepared=content.prepare(draft);groups=prepared['groups'];references=draft.get('references',{});refs=[];work=content.work_name(draft)
- def p(text,style='body'):
+ blocks=[];prepared=content.prepare(draft,editable);groups=prepared['groups'];references=draft.get('references',{});refs=[];work=content.work_name(draft)
+ def p(text,style='body',origin=None):
   for line in clean(text).splitlines():
-   if line.strip():blocks.append({'kind':'p','text':line.strip(),'style':style})
+   if line.strip():blocks.append({'kind':'p','text':line.strip(),'style':style,**({'origin':origin} if origin else {})})
  def heading(index):blocks.append({'kind':'heading','number':str(1+sum(b['kind']=='heading' for b in blocks)),'text':SECTIONS[index]})
  def source(entry):
   marks=[]
@@ -40,9 +40,21 @@ def build(draft):
   heading(i)
   entries=groups[i]+(prepared['budget'] if i==2 else [])
   for entry in entries:
-   for brief in content.concise_bullets(entry['text']):p('○ '+brief)
+   for brief in content.concise_bullets(entry['text']):p('○ '+brief,origin=entry.get('origin'))
    source(entry)
-  if not entries:p('○ 확인 필요')
+  if not entries:
+   origin=None
+   if editable:
+    for item_index,item in enumerate(draft['items']):
+     if content.classification(item['category'])!=i:continue
+     offset=0
+     for raw in item['text'].splitlines(keepends=True):
+      line=raw.rstrip('\r\n')
+      if content.unknown(content.strip_marker(line)):
+       origin={'item_index':item_index,'start':offset,'end':offset+len(line),'before':line};break
+      offset+=len(raw)
+     if origin:break
+   p('○ 확인 필요',origin=origin)
   if i==5:
    tasks=[t for t in draft.get('tasks',[]) if not t.get('deleted')]
    if tasks:
@@ -90,7 +102,9 @@ def html_document(model):
   elif kind=='subtitle':content.append('<div class="report-subtitle">'+text+'</div>')
   elif kind in ('summary_title','appendix_title'):content.append('<h1 class="summary-title" data-break="1">'+text+'</h1>')
   elif kind=='heading':content.append('<h2><span>'+esc(b['number'])+'</span><strong>'+text+'</strong></h2>')
-  else:content.append('<p class="'+('note' if b.get('style')=='note' else 'body')+'">'+text+'</p>')
+  else:
+   edit=(' data-edit-id="'+esc(b['edit_id'])+'" tabindex="0" role="button" aria-label="이 문단 선택: '+esc(b['text'][:80])+'"') if b.get('edit_id') else ''
+   content.append('<p class="'+('note' if b.get('style')=='note' else 'body')+'"'+edit+'>'+text+'</p>')
  css=(Path(__file__).parent/'templates/report.css').read_text(encoding='utf-8')
  font=base64.b64encode((Path(__file__).parent/'templates/fonts/Pretendard-ExtraBold.woff2').read_bytes()).decode()
  css="@font-face{font-family:'Pretendard ExtraBold';src:url(data:font/woff2;base64,"+font+") format('woff2');font-weight:800;font-display:block;}"+css

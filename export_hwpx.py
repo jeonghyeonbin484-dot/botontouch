@@ -12,7 +12,7 @@ HH='http://www.hancom.co.kr/hwpml/2011/head'
 SECTIONS=report_document.SECTIONS
 TEMPLATE=Path(__file__).parent/'templates/namyangju-report.hwpx'
 
-def output_model(draft):
+def output_model(draft,editable=False):
  # 출력용 복사본: 저장된 출처 데이터와 일반 미리보기는 변경하지 않는다.
  output_draft=copy.deepcopy(draft)
  def without_citations(value):
@@ -20,9 +20,7 @@ def output_model(draft):
   value=re.sub(r'출처\s*[:：]\s*(?:\[\d+\]\s*(?:[,，]\s*)?)+','',value)
   value=re.sub(r'(?m)^\s*출처 없음\s*[·:：]?\s*전임자 확인 필요\s*$','',value)
   return '\n'.join(line.rstrip() for line in value.splitlines() if line.strip())
- for item in output_draft.get('items',[]):
-  item['text']=without_citations(item.get('text',''))
- model=report_document.build(output_draft)
+ model=report_document.build(output_draft,editable)
  filtered=[]
  for block in model['blocks']:
   text=block['text']

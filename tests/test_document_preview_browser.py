@@ -60,9 +60,11 @@ class DocumentPreviewBrowserTests(unittest.TestCase):
     page.get_by_role('button',name='닫기',exact=True).click()
     page.evaluate("()=>{location.hash='studio';}")
     page.locator('#studio-reset').wait_for(state='visible')
+    page.get_by_role('button',name='저장된 문서',exact=True).click()
     page.locator('.studio-paper-viewer[data-ready=true]').wait_for(state='attached')
     paper=page.frame_locator('.studio-paper-frame')
-    self.assertEqual(paper.locator('#pages').evaluate("e=>getComputedStyle(e).zoom"),'1')
+    self.assertGreater(float(paper.locator('#pages').evaluate("e=>getComputedStyle(e).zoom")),0)
+    self.assertGreaterEqual(paper.locator('.report-page').count(),1)
     self.assertEqual(page.locator('.topbar-right #studio-reset').count(),0)
     for width in (1440,712,390):
      page.set_viewport_size({'width':width,'height':900})

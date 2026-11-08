@@ -86,14 +86,16 @@ def money_fact(text,draft,ids):
  supported=any(all(re.sub(r'\s','',a) in re.sub(r'\s','',str(references[s].get('text',''))) for a in amount) for s in ids if s in references)
  return bool(supported or draft.get('reviewed'))
 
-def prepare(draft):
+def prepare(draft,editable=False):
  groups={i:[] for i in range(1,7)};budget=[];seen={};removed=0;known={key(a):i for i,ls in ALIASES.items() for a in ls}
  ignored={key(work_name(draft)),key(draft.get('title','')),key('업무 인수인계서'),key('인수인계 개요'),key('인계자·인수자 확인'),key('업무 인계·인수 요약서')}
  excluded={key('인계자·인수자 확인'),key('업무 인계·인수 요약서')}
- for item in draft.get('items',[]):
+ for item_index,item in enumerate(draft.get('items',[])):
   category=str(item.get('category',''));target=classification(category)
   if key(re.sub(r'^\d+[.)]\s*','',strip_marker(category))) in excluded:continue
-  for raw in str(item.get('text','')).splitlines():
+  offset=0
+  for raw_line in str(item.get('text','')).splitlines(keepends=True):
+   raw=raw_line.rstrip('\r\n');start=offset;offset+=len(raw_line)
    text=strip_marker(raw)
    if not text or re.match(r'^출처\s*[:：]',text):continue
    if key(re.sub(r'^\d+[.)]\s*','',text).rstrip(':：')) in excluded:target=None;continue
@@ -111,6 +113,7 @@ def prepare(draft):
    if normalized in seen:
     seen[normalized]['source_ids']=list(dict.fromkeys(seen[normalized]['source_ids']+item.get('source_ids',[])));removed+=1;continue
    section=section_for(text,target);entry={'text':text,'category':category,'source_ids':list(item.get('source_ids',[])),'section':section};seen[normalized]=entry
+   if editable:entry['origin']={'item_index':item_index,'start':start,'end':start+len(raw),'before':raw}
    if money_fact(text,draft,entry['source_ids']):budget.append(entry)
    elif section==8:groups[4].append(entry|{'text':'확인 필요: '+text,'section':4})
    else:groups[section].append(entry)

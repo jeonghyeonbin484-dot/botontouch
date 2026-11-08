@@ -74,9 +74,11 @@ def handle(handler,factory,method):
     if draft:
      for d in handover_journey.documents(db,draft,workspace):db.execute('INSERT OR IGNORE INTO ai_studio_documents VALUES(?,?)',(sid,d['id']))
     db.commit();handler.respond(201,view(db,access(db,user,sid),user));return True
-   match=re.fullmatch(r'/api/studio/sessions/(\d+)(?:/(documents|messages|apply|reject))?',path)
+   match=re.fullmatch(r'/api/studio/sessions/(\d+)(?:/(documents|messages|apply|reject|paper|paragraphs|paragraph-apply|paragraph-reject|paragraph-undo))?',path)
    if not match:raise auth_control.AccessError(404,'AI 작성 대화 기능을 찾을 수 없습니다.')
    sid=int(match[1]);s=access(db,user,sid);action=match[2]
+   if action in __import__('studio_paragraphs').ACTIONS:
+    __import__('studio_paragraphs').handle(handler,db,s,user,action,method,body);return True
    if method=='GET' and not action:handler.respond(200,view(db,s,user,params.get('before',[None])[0]));return True
    if method!='POST':raise auth_control.AccessError(405,'이 작업은 POST 요청을 사용하세요.')
    if action=='documents':
@@ -117,6 +119,7 @@ def handle(handler,factory,method):
    if action in ('apply','reject'):
     message=db.execute("SELECT * FROM ai_studio_messages WHERE id=? AND session_id=? AND role='assistant' AND status='done'",(body.get('message_id'),sid)).fetchone()
     if not message:raise auth_control.AccessError(404,'이 대화의 AI 제안만 반영할 수 있습니다.')
+    if message['mode']=='paragraph':raise auth_control.AccessError(405,'문단 수정안의 전용 반영·취소 기능을 사용하세요.')
     result=unpack(message['result']);kind=body.get('kind','draft');event_action='문서 수정안 반영' if kind=='draft' else '예상 Q&A 추가'
     state_key=message['proposal_state']
     applied=(state_key=='applied' or state_key==kind+'_applied')
