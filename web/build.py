@@ -20,7 +20,7 @@ js += '\n' + (ROOT / 'video-guide-config.js').read_text(encoding='utf-8')
 js += '\n' + (ROOT / 'video-guide.js').read_text(encoding='utf-8')
 js += '\n' + (ROOT / 'ai-studio.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'resource-library.js').read_text(encoding='utf-8-sig')
-js += '\n' + (ROOT / 'template-preview.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'studio-document-preview.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'user-manual.js').read_text(encoding='utf-8-sig')
 assert '</script' not in js.lower()
 assert shell.count('/* APP_STYLE */') == shell.count('/* APP_SCRIPT */') == 1

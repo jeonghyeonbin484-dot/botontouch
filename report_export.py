@@ -5,7 +5,7 @@ import export_hwpx
 import auth_control
 
 def respond(handler,payload,extension,filename):
- model=report_document.build(payload)
+ model=export_hwpx.output_model(payload) if extension=='html' and parse_qs(urlsplit(handler.path).query).get('view')==['first-page'] else report_document.build(payload)
  expected=parse_qs(urlsplit(handler.path).query).get('report_hash',[''])[0]
  if expected and expected!=model['fingerprint']:raise auth_control.AccessError(409,'미리보기 이후 저장 내용이 바뀌었습니다. 미리보기를 다시 열고 내려받으세요.')
  if extension=='hwpx':raw=export_hwpx.build(payload);mime='application/hwp+zip'

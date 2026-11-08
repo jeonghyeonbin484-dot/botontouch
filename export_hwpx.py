@@ -12,8 +12,8 @@ HH='http://www.hancom.co.kr/hwpml/2011/head'
 SECTIONS=report_document.SECTIONS
 TEMPLATE=Path(__file__).parent/'templates/namyangju-report.hwpx'
 
-def build(draft):
- # HWPX-only copy: preserve stored source metadata and all preview behavior.
+def output_model(draft):
+ # 출력용 복사본: 저장된 출처 데이터와 일반 미리보기는 변경하지 않는다.
  output_draft=copy.deepcopy(draft)
  def without_citations(value):
   value=report_document.clean(value)
@@ -31,6 +31,10 @@ def build(draft):
   block['text']=without_citations(text)
   if block['text'].strip():filtered.append(block)
  model['blocks']=filtered
+ return model
+
+def build(draft):
+ model=output_model(draft)
  with zipfile.ZipFile(TEMPLATE) as z:parts={n:z.read(n) for n in z.namelist()}
  for _,pair in ET.iterparse(io.BytesIO(parts['Contents/section0.xml']),events=['start-ns']):
   if pair[0] and not re.fullmatch(r'ns\d+',pair[0]):ET.register_namespace(*pair)
