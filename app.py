@@ -58,6 +58,7 @@ def connect():
     __import__('ai_studio').ensure(db)
     __import__('workbench').ensure(db)
     __import__('journey_authoring').ensure(db)
+    __import__('request_inbox').ensure(db)
     for table in ('documents', 'drafts', 'questions'):
         if 'workspace_id' not in {r['name'] for r in db.execute(f'PRAGMA table_info({table})')}:
             db.execute(f'ALTER TABLE {table} ADD COLUMN workspace_id INTEGER NOT NULL DEFAULT 1')

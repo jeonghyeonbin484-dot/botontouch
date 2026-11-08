@@ -88,7 +88,9 @@ def handle(handler,factory,method):
     row=db.execute('SELECT * FROM journey_progress WHERE workspace_id=?',(workspace,)).fetchone();handler.respond(200,dict(row) if row else {'step':1});return True
    if path=='/api/journey/questions' and method=='GET':
     if not req:workflow.load_draft(db,draft_id,workspace)
-    rows=question_rows(db,request_id=req['id']) if req else question_rows(db,draft_id=draft_id);handler.respond(200,{'questions':rows});return True
+    rows=question_rows(db,request_id=req['id']) if req else question_rows(db,draft_id=draft_id)
+    meta={'request_revision':req['revision'],'answer_token':__import__('request_inbox').metrics(db,req)['answer_token']} if req else {}
+    handler.respond(200,{'questions':rows,**meta});return True
    if method!='POST':raise ValueError('지원하지 않는 요청입니다.')
    if req and req['state']=='completed':raise ValueError('완료된 인수인계는 이력을 보존하며 수정하지 않습니다.')
    if path=='/api/journey/question':

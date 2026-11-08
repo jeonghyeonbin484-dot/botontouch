@@ -148,7 +148,7 @@ def summary(row):
 
 def detail(db, user, request_id):
     row = request_row(db, user, request_id)
-    return summary(row) | {'payload': json.loads(row['payload']), 'documents': json.loads(row['documents']), 'fingerprint': row['draft_fingerprint'], 'files': [dict(f) for f in db.execute('SELECT id,document_id,name,length(raw) AS bytes FROM request_files WHERE request_id=? AND revision=?',(request_id,row['revision']))], 'can_receive': user['id']==row['recipient_account'], 'can_send': user['id']==row['sender_account'], 'history': [dict(r) for r in db.execute('SELECT h.id,h.action,h.details,h.created,u.username AS actor FROM request_history h JOIN users u ON u.id=h.actor_account WHERE request_id=? ORDER BY h.id', (request_id,))]}
+    return summary(row) | __import__('request_inbox').metrics(db,row) | {'attachment_count':len(json.loads(row['documents'])),'payload': json.loads(row['payload']), 'documents': json.loads(row['documents']), 'fingerprint': row['draft_fingerprint'], 'files': [dict(f) for f in db.execute('SELECT id,document_id,name,length(raw) AS bytes FROM request_files WHERE request_id=? AND revision=?',(request_id,row['revision']))], 'can_receive': user['id']==row['recipient_account'], 'can_send': user['id']==row['sender_account'], 'history': [dict(r) for r in db.execute('SELECT h.id,h.action,h.details,h.created,u.username AS actor FROM request_history h JOIN users u ON u.id=h.actor_account WHERE request_id=? ORDER BY h.id', (request_id,))]}
 
 
 def send(db, user, body, source_changes=None):
@@ -393,9 +393,7 @@ def handle(handler,factory,method,source_changes=None):
                 if path=='/api/requests':
                     kind=query.get('box',['received'])[0]
                     if kind not in ('received','sent'):raise ValueError('요청함을 선택하세요.')
-                    field='recipient_account' if kind=='received' else 'sender_account'
-                    rows=db.execute("SELECT id,workspace_id,draft_id,recipient_account,state,reason,revision,created,updated,accepted_at,completed_at,version_id,sender_snapshot,recipient_snapshot,json_object('title',json_extract(payload,'$.title')) AS payload FROM handover_requests WHERE "+field+'=? ORDER BY id DESC LIMIT 200',(user['id'],)).fetchall()
-                    handler.respond(200,{'items':[summary(r) for r in rows],'pending':db.execute('SELECT count(*) FROM handover_requests WHERE '+field+"=? AND state IN ('requested','reviewing')",(user['id'],)).fetchone()[0]});return True
+                    handler.respond(200,__import__('request_inbox').list_requests(db,user,query,kind));return True
                 file_match=re.fullmatch(r'/api/requests/(\d+)/files/(\d+)',path)
                 if file_match:
                     row=request_row(db,user,int(file_match[1]))
@@ -436,6 +434,8 @@ def handle(handler,factory,method,source_changes=None):
                     result={'id':send(db,user,body,source_changes)}
                 elif path=='/api/requests/action':
                     act(db,user,body,source_changes);result={'saved':True}
+                elif path=='/api/requests/answers-reviewed':
+                    result=__import__('request_inbox').confirm_answers(db,user,body)
                 else:fail(404,'요청 경로가 없습니다.')
                 db.commit();handler.respond(200,result);return True
             handler.respond(404,{'error':'요청 경로가 없습니다.'})
