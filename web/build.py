@@ -29,6 +29,7 @@ js += '\n' + (ROOT / 'studio-editing-ux.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'received-inbox.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'sent-requests.js').read_text(encoding='utf-8-sig')
 js += '\n' + (ROOT / 'chat-messenger.js').read_text(encoding='utf-8-sig')
+js += '\n' + (ROOT / 'library-files.js').read_text(encoding='utf-8-sig')
 assert '</script' not in js.lower()
 assert shell.count('/* APP_STYLE */') == shell.count('/* APP_SCRIPT */') == 1
 output = shell.replace('/* APP_STYLE */', css).replace('/* APP_SCRIPT */', js)

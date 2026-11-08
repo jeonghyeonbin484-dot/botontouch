@@ -190,6 +190,7 @@ class Handler(BaseHTTPRequestHandler):
         if __import__('journey_authoring').handle(self,connect,'GET'):return
         if __import__('workbench').handle(self,connect,'GET'):return
         if __import__('resource_library').handle(self,connect,'GET'):return
+        if __import__('resource_files').handle(self,connect,'GET'):return
         if __import__('ai_studio').handle(self,connect,'GET'):return
         if handover_journey.handle(self, connect, 'GET'):
             return
@@ -319,6 +320,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if __import__('journey_authoring').handle(self,connect,'POST'):return
         if __import__('workbench').handle(self,connect,'POST'):return
+        if __import__('resource_files').handle(self,connect,'POST'):return
         if __import__('ai_studio').handle(self,connect,'POST'):return
         if handover_journey.handle(self, connect, 'POST'):
             return
@@ -346,7 +348,12 @@ class Handler(BaseHTTPRequestHandler):
                 if table not in ('documents', 'drafts', 'questions', 'tasks') or type(body.get('id')) is not int:
                     raise ValueError('삭제할 항목을 확인해 주세요.')
                 with closing(connect()) as db:
-                    cursor = db.execute(f'UPDATE {table} SET deleted=1 WHERE id=? AND workspace_id=? AND deleted=0', (body['id'], workspace_id))
+                    if table=='documents' and body.get('expected_revision') is not None:
+                        current=db.execute('SELECT revision FROM documents WHERE id=? AND workspace_id=? AND deleted=0',(body['id'],workspace_id)).fetchone()
+                        if not current or current['revision']!=body['expected_revision']:return self.respond(409,{'error':'자료가 변경되었습니다. 삭제 영향을 다시 확인하세요.'})
+                    condition=' AND revision=?' if table=='documents' and body.get('expected_revision') is not None else ''
+                    values=(body['id'],workspace_id,body['expected_revision']) if condition else (body['id'],workspace_id)
+                    cursor = db.execute(f'UPDATE {table} SET deleted=1 WHERE id=? AND workspace_id=? AND deleted=0'+condition, values)
                     if not cursor.rowcount:
                         raise ValueError('삭제할 항목이 없거나 다른 묶음에 속해 있습니다.')
                     db.commit()
@@ -492,9 +499,17 @@ class Handler(BaseHTTPRequestHandler):
             if not name or len(name)>200 or any(ord(c)<32 for c in name):raise ValueError('파일 이름을 확인해 주세요.')
             original_bytes = self.rfile.read(size)
             if len(original_bytes)!=size:raise ValueError('파일 전송이 완료되지 않았습니다.')
+            if not self.headers.get('X-Replace-Id'):
+                with closing(connect()) as db:
+                    duplicate=db.execute('SELECT d.id,d.name FROM documents d JOIN document_files f ON f.document_id=d.id AND f.revision=d.revision WHERE d.workspace_id=? AND d.deleted=0 AND f.raw=?',(workspace_id,original_bytes)).fetchone()
+                if duplicate:return self.respond(200,{'id':duplicate['id'],'name':duplicate['name'],'duplicate':True,'message':'동일 파일이 이미 등록되어 기존 자료를 재사용했습니다.'})
             content, sources = extract(name, original_bytes)
             with closing(connect()) as db:
+                db.execute('BEGIN IMMEDIATE')
                 replace_id = self.headers.get('X-Replace-Id')
+                if not replace_id:
+                    duplicate=db.execute('SELECT d.id,d.name FROM documents d JOIN document_files f ON f.document_id=d.id AND f.revision=d.revision WHERE d.workspace_id=? AND d.deleted=0 AND f.raw=?',(workspace_id,original_bytes)).fetchone()
+                    if duplicate:return self.respond(200,{'id':duplicate['id'],'name':duplicate['name'],'duplicate':True,'message':'동일 파일이 이미 등록되어 기존 자료를 재사용했습니다.'})
                 if replace_id:
                     document_id = int(replace_id)
                     cursor = db.execute('UPDATE documents SET name=?,content=?,sources=?,revision=revision+1 WHERE id=? AND workspace_id=? AND deleted=0', (name, content, json.dumps(sources, ensure_ascii=False), document_id, workspace_id))
