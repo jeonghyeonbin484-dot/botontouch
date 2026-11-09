@@ -6,7 +6,7 @@ class ReportQualityTests(unittest.TestCase):
  def test_title_and_nested_headings_not_repeated(self):
   d=self.draft();d['items']=[dict(category='담당 업무 개요',text='# 가상 드론 교육 업무 인수인계서\n## 1.담당 업무\n교육 접수와 현장 운영을 담당합니다.\n교육 접수와 현장 운영을 담당합니다.',source_ids=[])];m=report_document.build(d);texts=[b['text'] for b in m['blocks']];self.assertEqual(texts.count('○ 교육 접수와 현장 운영을 담당합니다.'),1);self.assertIn('○ 업무명: 가상 드론 교육',texts);self.assertNotIn('○ 업무명: 서무업무',texts)
  def test_no_budget_keyword_false_positive_and_no_qa_in_pending(self):
-  d=self.draft();d['items']=[dict(category='진행 중인 현안 및 향후 조치사항',text='예산 확보 여건에 따라 시범 운영을 추진할 예정입니다.',source_ids=[])];d['gap_review']={'questions':[dict(qa_kind='expected',qa_included=1,question='가상 선정 질문',reply='',recommended_answer='추가 확인 필요'),dict(qa_kind='expected',qa_included=0,question='제외된 질문',reply='제외된 답변'),dict(qa_kind='expected',qa_included=1,qa_archived=1,question='숨긴 질문',reply='숨긴 답변')]};p=report_content.prepare(d);self.assertEqual(len(p['groups'][2]),1);self.assertEqual(p['budget'],[]);m=report_document.build(d);kinds=[b['kind'] for b in m['blocks']];self.assertIn('appendix_title',kinds);self.assertNotIn('summary_title',kinds);s='\n'.join(b['text'] for b in m['blocks']);self.assertIn('- AI 추천 답변 · 확인 필요: 추가 확인 필요',s);self.assertNotIn('제외된 질문',s);self.assertNotIn('숨긴 질문',s)
+  d=self.draft();d['items']=[dict(category='진행 중인 현안 및 향후 조치사항',text='예산 확보 여건에 따라 시범 운영을 추진할 예정입니다.',source_ids=[])];d['gap_review']={'questions':[dict(qa_kind='expected',qa_included=1,question='가상 선정 질문',reply='',recommended_answer='추가 확인 필요'),dict(qa_kind='expected',qa_included=0,question='제외된 질문',reply='제외된 답변'),dict(qa_kind='expected',qa_included=1,qa_archived=1,question='숨긴 질문',reply='숨긴 답변')]};p=report_content.prepare(d);self.assertEqual(len(p['groups'][2]),1);self.assertEqual(p['budget'],[]);m=report_document.build(d);kinds=[b['kind'] for b in m['blocks']];self.assertNotIn('appendix_title',kinds);self.assertNotIn('summary_title',kinds);s='\n'.join(b['text'] for b in m['blocks']);self.assertNotIn('가상 선정 질문',s);self.assertNotIn('제외된 질문',s);self.assertNotIn('숨긴 질문',s)
  def test_decimals_and_negation_are_not_duplicates(self):
   d=self.draft();d['items']=[dict(category='담당 업무',text='처리량은 1.5건입니다.\n처리량은 15건입니다.\n교육을 진행하지 않습니다.\n교육을 진행합니다.',source_ids=[])];self.assertEqual(sum(len(x) for x in report_content.prepare(d)['groups'].values()),4)
  def test_finance_only_checked_fact(self):
@@ -24,3 +24,19 @@ class ReportQualityTests(unittest.TestCase):
   self.assertEqual(report_content.section_for('시스템 장애 대응 업무를 담당합니다.',1),1)
   self.assertEqual(report_content.section_for('지연된 계약 조건을 수정해야 합니다.',4),4)
 if __name__=='__main__':unittest.main()
+
+class AppendixAnswerFilteringTests(unittest.TestCase):
+ def test_only_substantive_answers_render_without_mutating_saved_questions(self):
+  d={'title':'가상 업무','items':[],'references':{},'gap_review':{'questions':[
+   {'qa_kind':'expected','question':'빈 답변 질문','recommended_answer':'   '},
+   {'qa_kind':'expected','question':'미확인 질문','recommended_answer':'추가 확인 필요. 자료에서 답을 확인할 수 없습니다.'},
+   {'qa_kind':'expected','question':'일정 질문','recommended_answer':'확인 필요. 매월 첫째 주에 일정표를 점검합니다.'},
+   {'qa_kind':'expected','question':'확정 답변 질문','reply':'매주 월요일 접수합니다.'}]}}
+  before=copy.deepcopy(d);m=report_document.build(d);text='\n'.join(b['text'] for b in m['blocks'])
+  self.assertNotIn('AI 추천 답변',text);self.assertNotIn('빈 답변 질문',text);self.assertNotIn('미확인 질문',text)
+  self.assertIn('1. 일정 질문',text);self.assertIn('2. 확정 답변 질문',text)
+  self.assertIn('- 확인 필요: 매월 첫째 주에 일정표를 점검합니다.',text)
+  with zipfile.ZipFile(io.BytesIO(export_hwpx.build(d))) as archive:
+   section=E.fromstring(archive.read('Contents/section0.xml'));hwpx=''.join(section.itertext())
+   self.assertNotIn('AI 추천 답변',hwpx);self.assertNotIn('미확인 질문',hwpx);self.assertIn('일정 질문',hwpx)
+  self.assertEqual(d,before)

@@ -11,6 +11,14 @@ SECTIONS=['인수인계 개요','담당업무 현황','주요 업무계획 및 �
 def clean(value):
  return ''.join(c for c in str(value or '') if c in '\t\n\r' or 0x20<=ord(c)<=0xD7FF or 0xE000<=ord(c)<=0xFFFD or 0x10000<=ord(c)<=0x10FFFF)
 
+def appendix_answer(question):
+ """출력할 실질 답변만 선택하고 확인 요청만 있는 자리표시는 제외한다."""
+ answer=clean(question.get('reply')).strip() or clean(question.get('recommended_answer')).strip()
+ remaining=re.sub(r'(?:추가|전임자)?\s*확인\s*필요|자료에서\s*(?:답을\s*)?확인할\s*수\s*없습니다|자료에서\s*확인되지\s*않(?:음|았습니다)|자료에\s*(?:답변|정보|내용)(?:이|가)?\s*없(?:음|습니다)', '', answer)
+ if not re.sub(r'[\s.,:;·!?○\-]+','',remaining):return ''
+ return answer
+
+
 def classify(name):
  return __import__('report_content').classification(name)
 
@@ -70,12 +78,15 @@ def build_report_document(draft,editable=False):
  questions=[];seen=set()
  for q in expected+extra:
   key=content.paragraph_key(q.get('question',''))
-  if key and key not in seen:questions.append(q);seen.add(key)
+  answer=appendix_answer(q)
+  if key and answer and key not in seen:questions.append((q,answer));seen.add(key)
  if questions:
   blocks.append({'kind':'appendix_title','text':'부록 · 후임자 예상 질문·답변'})
-  for n,q in enumerate(questions,1):
+  for n,(q,answer) in enumerate(questions,1):
    p(str(n)+'. '+clean(q.get('question')))
-   p(('- 인계자 확인 답변: ' if q.get('reply') else '- AI 추천 답변 · 확인 필요: ')+clean(q.get('reply') or q.get('recommended_answer') or '추가 확인 필요'))
+   if clean(q.get('reply')).strip():p('- 인계자 확인 답변: '+answer)
+   elif q.get('answer_supported'):p('- '+answer)
+   else:p('- 확인 필요: '+re.sub(r'^확인\s*필요\s*[:.·]\s*','',answer))
  model={'title':clean(draft.get('title')),'blocks':blocks,'reviewed':bool(draft.get('reviewed')),'template':'namyangju-report-v3'}
  model['fingerprint']=hashlib.sha256(json.dumps(model,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
  return model

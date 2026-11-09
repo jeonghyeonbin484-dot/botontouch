@@ -31,7 +31,7 @@ class RevisedPreviewBrowserTests(unittest.TestCase):
    for removed in ('관련 문서 및 참고자료','인계자·인수자 확인','업무 인계·인수 요약서'):
     self.assertNotIn(removed,text)
    question=page.get_by_text('1. 매월 초 해야 할 업무는?',exact=True)
-   self.assertEqual(question.evaluate('e=>e.nextElementSibling.textContent'),'- AI 추천 답변 · 확인 필요: 전월분 초과근무 내역을 취합·점검합니다.')
+   self.assertEqual(question.evaluate('e=>e.nextElementSibling.textContent'),'- 확인 필요: 전월분 초과근무 내역을 취합·점검합니다.')
    page.screenshot(path=str(output/'revised-body.png'))
    page.locator('.report-page').last.scroll_into_view_if_needed()
    page.screenshot(path=str(output/'revised-questions.png'))

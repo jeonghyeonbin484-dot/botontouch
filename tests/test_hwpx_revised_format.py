@@ -39,7 +39,7 @@ class RevisedFormatTests(unittest.TestCase):
   blocks=model['blocks'];start=blocks.index(headings[0])+1;end=blocks.index(headings[1])
   self.assertTrue(all(b['text'].startswith('○ ') for b in blocks[start:end]))
   question=next(i for i,b in enumerate(blocks) if b['text']=='1. 매월 초 해야 할 업무는?')
-  self.assertEqual(blocks[question+1]['text'],'- AI 추천 답변 · 확인 필요: 전월분 초과근무 내역을 취합·점검합니다.')
+  self.assertEqual(blocks[question+1]['text'],'- 확인 필요: 전월분 초과근무 내역을 취합·점검합니다.')
   self.assertEqual(draft,before)
 
  def test_hwpx_xml_text_and_every_preview_use_same_revised_content(self):
@@ -58,7 +58,7 @@ class RevisedFormatTests(unittest.TestCase):
    for removed in ('관련 문서 및 참고자료','인계자·인수자 확인','업무 인계·인수 요약서','삭제할','제외된 질문'):
     self.assertNotIn(removed,html);self.assertNotIn(removed,text);self.assertNotIn(removed,xml_text)
   self.assertIn('○ 업무명: 2026년 서무',text)
-  self.assertIn('\n- AI 추천 답변 · 확인 필요:',text)
+  self.assertIn('\n- 확인 필요:',text)
   self.assertEqual(draft,before)
 
  def test_concise_bullets_keep_tasks_numbers_conditions_and_negation(self):
