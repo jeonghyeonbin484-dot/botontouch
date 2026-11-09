@@ -1258,7 +1258,19 @@ $('journey-start').onclick=startHandover;
 const workbenchLabels={draft:'작성 중',reviewed:'검토 완료',requested:'인수 요청',reviewing:'인수자 확인 중',needs_info:'보완 요청',accepted:'인수 수락',completed:'완료'};
 function workbenchProgress(stage){const list=node('ol','workbench-progress');list.setAttribute('aria-label','진행 상태: '+['자료 등록','문서 작성','검토','후임자 지정','인수 요청','수락','완료'][stage-1]);['자료','작성','검토','지정','요청','수락','완료'].forEach((text,i)=>{const item=node('li',i+1<stage?'done':i+1===stage?'current':'',text);if(i+1===stage)item.setAttribute('aria-current','step');list.append(item);});return list;}
 async function workbenchOpen(item){if(!libraryCanNavigate())return;if(item.kind==='draft'){if(!await libraryUseWorkspace(item.workspace_id))return;const draft=state.drafts.find(d=>d.id===item.id);if(!draft){toast('문서를 다시 불러와 주세요.');return;}openDraft(draft);journeyNew=false;journeyStep=Math.max(2,Math.min(4,item.stage));journeyWorkspace=state.workspace;location.hash='journey';mountJourney();paintJourney();}else{location.hash=item.box;await loadRequestCentre();await openAddressedRequest(item.id);}}
-function workbenchCard(item,compact=false){const card=node('article','workbench-card'+(compact?' compact':'')),head=node('div','workbench-card-heading');head.append(button(item.title,()=>void workbenchOpen(item),'text-button workbench-document-title'),node('span','badge '+(item.state==='needs_info'?'amber':'neutral'),workbenchLabels[item.state]||item.state));card.append(head,node('p','muted',item.workspace_title+(item.person?' · '+item.person:'')+' · '+(item.kind==='draft'?'작성 문서':item.box==='inbox'?'받은 요청':'보낸 요청')),workbenchProgress(item.stage));const time=node('small','muted','최근 수정 '+formatRequestTime(item.updated));card.append(time);return card;}
+async function deleteWorkbenchDraft(item){
+ if(state.busy.size||!libraryCanNavigate())return;
+ if(!await confirmAction('작성 중인 인수인계서를 삭제할까요?',item.title+'\n\n홈과 문서 목록에서 제외합니다. 원본 자료와 AI 대화·수정 이력은 보존합니다. 요청을 발송한 문서는 삭제할 수 없습니다.','삭제하기'))return;
+ if(!libraryCanNavigate())return;
+ setBusy('delete-home-draft',true);
+ try{
+  await post('/api/workbench/delete-draft',{draft_id:item.id,expected_fingerprint:item.delete_token});
+  if(state.draft?.id===item.id){state.draft=null;state.draftDirty=false;renderEditor();updateDirty();}
+  await loadAll();if(workbenchPending)await workbenchPending;await loadJourneyDashboard();toast('작성 중인 인수인계서를 목록에서 삭제했습니다.');
+ }catch(error){toast(error.message);message('global-message',error.message,'error');}
+ finally{setBusy('delete-home-draft',false);}
+}
+function workbenchCard(item,compact=false){const card=node('article','workbench-card'+(compact?' compact':'')),head=node('div','workbench-card-heading');head.append(button(item.title,()=>void workbenchOpen(item),'text-button workbench-document-title'),node('span','badge '+(item.state==='needs_info'?'amber':'neutral'),workbenchLabels[item.state]||item.state));if(item.kind==='draft'&&item.can_delete){const remove=button('삭제',()=>void deleteWorkbenchDraft(item),'text-button danger-text');remove.setAttribute('aria-label',item.title+' 삭제');head.append(remove);}card.dataset.workbenchId=item.id;card.append(head,node('p','muted',item.workspace_title+(item.person?' · '+item.person:'')+' · '+(item.kind==='draft'?'작성 문서':item.box==='inbox'?'받은 요청':'보낸 요청')),workbenchProgress(item.stage));const time=node('small','muted','최근 수정 '+formatRequestTime(item.updated));card.append(time);return card;}
 let workbenchPage=1,workbenchPending=null,workbenchPendingKey='',workbenchEpoch=0,workbenchFailures=0,workbenchSearchTimer=null,workbenchTimer=null;
 paths.bell='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4';
 const workbenchBell=button('업무 알림',()=>{workbenchAlerts.showModal();void loadJourneyDashboard();},'button secondary small workbench-bell','bell'),workbenchBellLabel=node('span','workbench-bell-label','알림'),workbenchBadge=node('span','badge','0');workbenchBadge.hidden=true;workbenchBell.append(workbenchBellLabel,workbenchBadge);for(const child of [...workbenchBell.childNodes])if(child.nodeType===Node.TEXT_NODE)child.remove();workbenchBell.id='workbench-bell';document.querySelector('.topbar-right').prepend(workbenchBell);
@@ -1614,6 +1626,31 @@ const librarySelection=new Map(),libraryFileFilters=node('div','library-file-fil
 function librarySelect(id,label,options){const field=node('label','',label),select=node('select');select.id=id;select.setAttribute('aria-label',label);for(const [value,text] of options)select.append(new Option(text,value));field.append(select);libraryFileFilters.append(field);select.onchange=()=>{libraryState.page=1;void loadResourceLibrary();};return select;}
 librarySelect('library-format','파일 형식',[['all','모든 형식'],['pdf','PDF'],['hwpx','HWPX'],['xlsx','엑셀'],['txt','텍스트']]);librarySelect('library-origin','자료 구분',[['all','전체 자료'],['managed','내가 관리하는 자료'],['received','전달받은 자료']]);$('library-search-form').after(libraryFileFilters);
 const libraryConnect=button('선택한 자료 연결',()=>void libraryAction(()=>libraryReuseDialog()),'button primary small');libraryConnect.disabled=true;libraryFileFilters.append(libraryConnect);const librarySelected=node('span','muted');libraryFileFilters.append(librarySelected);
+const librarySelectAllResults=button('검색 결과 전체 선택',()=>void libraryAction(async()=>{
+ if(!libraryCanNavigate())return;
+ const params=new URLSearchParams({kind:'documents',q:libraryState.q,workspace_id:libraryState.workspace,page:1,page_size:200,status:'all',sort:$('library-sort').value,format:$('library-format').value,origin:$('library-origin').value});
+ const data=await api('/api/library?'+params);
+ if(data.total>200)throw Error('한 번에 200개까지 선택할 수 있습니다. 검색이나 업무 필터로 범위를 좁혀 주세요.');
+ librarySelection.clear();for(const item of data.items)librarySelection.set((item.request_id||0)+':'+item.id,item);
+ const all=$('library-items').querySelector('thead input[type="checkbox"]');if(all){all.checked=true;all.dispatchEvent(new Event('change'));}
+ toast(data.total+'개 자료를 선택했습니다.');
+}),'button secondary small');librarySelectAllResults.id='library-select-all-results';libraryFileFilters.append(librarySelectAllResults);
+const libraryDeleteSelected=button('선택한 자료 삭제',()=>void libraryAction(deleteSelectedLibraryFiles),'button secondary small danger-text');
+libraryDeleteSelected.id='library-delete-selected';libraryDeleteSelected.disabled=true;libraryFileFilters.append(libraryDeleteSelected);
+async function deleteSelectedLibraryFiles(){
+ const selected=[...librarySelection.values()],eligible=selected.filter(item=>item.editable&&!item.request_id);
+ if(!eligible.length)throw Error('삭제 가능한 내 자료를 선택하세요. 전달받은 자료와 읽기 전용 자료는 삭제할 수 없습니다.');
+ if(!libraryCanNavigate())return;
+ const preview=await post('/api/library/files/delete-preview',{items:eligible.map(item=>({id:item.id,revision:item.revision}))});
+ const skipped=selected.length-eligible.length;
+ const accepted=await confirmAction('선택한 자료 '+eligible.length+'개를 삭제할까요?',
+  '연결된 인수인계 문서 '+preview.draft_count+'건이 있습니다. 자료 목록과 이후 AI 입력에서 제외합니다. 저장된 문서 내용·출처 원문·전달 당시 첨부파일은 유지합니다.'+
+  (skipped?' 읽기 전용 또는 전달받은 자료 '+skipped+'개는 제외합니다.':''),'선택한 자료 삭제');
+ if(!accepted||!libraryCanNavigate())return;
+ libraryDeleteSelected.disabled=true;
+ const result=await post('/api/library/files/delete',{items:preview.items.map(item=>({id:item.id,revision:item.revision}))});
+ await loadAll();await loadResourceLibrary();toast(result.deleted+'개 자료를 목록에서 삭제했습니다.');
+}
 $('library-sort').options[1].text='최근 등록순';$('library-sort').value='created';
 $('library-reset').onclick=()=>{$('library-format').value=$('library-origin').value=$('library-status').value='all';$('library-sort').value='created';$('library-search').value='';$('library-workspace').value='0';$('library-search-form').requestSubmit();};
 function libraryFileParams(item){return new URLSearchParams({document_id:item.id,...(item.request_id?{request_id:item.request_id}:{})});}
@@ -1627,8 +1664,8 @@ async function libraryFilePreview(item){
  dialog.onclose=()=>{if(url)URL.revokeObjectURL(url);dialog.remove();};document.body.append(dialog);dialog.showModal();
 }
 function renderLibraryTable(items,box){
- libraryConnect.disabled=true;librarySelected.textContent='';if(!items.length)return;box.append(node('p','library-table-hint muted','좁은 화면에서는 표를 좌우로 밀어 작업 버튼을 확인하세요.'));const wrap=node('div','library-table-scroll'),table=node('table','library-file-table'),head=node('thead'),hr=node('tr'),all=node('input');wrap.tabIndex=0;wrap.setAttribute('aria-label','업무자료 목록 · 좌우 스크롤');all.type='checkbox';all.setAttribute('aria-label','현재 페이지 자료 전체 선택');const selectHead=node('th');selectHead.append(all);hr.append(selectHead);for(const text of ['파일명','연결 업무','파일 형식','등록일','작업'])hr.append(node('th','',text));head.append(hr);const body=node('tbody');
- const controls=[];const update=()=>{libraryConnect.disabled=!librarySelection.size;librarySelected.textContent=librarySelection.size?librarySelection.size+'개 선택':'';all.checked=controls.every(c=>c.checked);all.indeterminate=controls.some(c=>c.checked)&&!all.checked;};
+ libraryConnect.disabled=true;libraryDeleteSelected.disabled=true;librarySelected.textContent='';if(!items.length)return;box.append(node('p','library-table-hint muted','좁은 화면에서는 표를 좌우로 밀어 작업 버튼을 확인하세요.'));const wrap=node('div','library-table-scroll'),table=node('table','library-file-table'),head=node('thead'),hr=node('tr'),all=node('input');wrap.tabIndex=0;wrap.setAttribute('aria-label','업무자료 목록 · 좌우 스크롤');all.type='checkbox';all.setAttribute('aria-label','현재 페이지 자료 전체 선택');const selectHead=node('th');selectHead.append(all);hr.append(selectHead);for(const text of ['파일명','연결 업무','파일 형식','등록일','작업'])hr.append(node('th','',text));head.append(hr);const body=node('tbody');
+ const controls=[];const update=()=>{libraryConnect.disabled=!librarySelection.size;libraryDeleteSelected.disabled=![...librarySelection.values()].some(item=>item.editable&&!item.request_id);librarySelected.textContent=librarySelection.size?librarySelection.size+'개 선택':'';all.checked=controls.every(c=>c.checked);all.indeterminate=controls.some(c=>c.checked)&&!all.checked;};
  for(const item of items){const tr=node('tr');tr.dataset.libraryId=item.id;tr.dataset.libraryType='document';const check=node('input');check.type='checkbox';check.setAttribute('aria-label',item.name+' 선택');controls.push(check);const key=(item.request_id||0)+':'+item.id;check.onchange=()=>{if(check.checked)librarySelection.set(key,item);else librarySelection.delete(key);update();};const td=node('td');td.append(check);const name=node('td');name.append(node('strong','',item.name),node('small','library-origin',item.origin==='received'?'전달받은 자료 · 요청 #'+item.request_id:item.editable?'내가 관리하는 자료':'공유받은 자료 · 읽기 전용'));tr.append(td,name,node('td','',item.workspace_title),node('td','',item.format?.toUpperCase()||fileType(item.name).toUpperCase()),node('td','',formatRequestTime(item.created)));const actions=node('td'),buttons=node('div','library-row-actions');buttons.append(button('미리보기',()=>void libraryAction(()=>libraryFilePreview(item)),'button secondary small'),button('다운로드',()=>void libraryAction(()=>libraryFileDownload(item)),'button secondary small'),button('연결',()=>void libraryAction(()=>libraryReuseDialog([item])),'button secondary small'));if(item.editable&&!item.request_id)buttons.append(button('삭제',()=>void libraryAction(async()=>{if(!await libraryUseWorkspace(item.workspace_id))return;await deleteRecord('documents',item.id,item.name);await loadResourceLibrary();}),'text-button danger-text'));if(item.editable&&!item.request_id)buttons.append(button('\uAD50\uCCB4',()=>void libraryAction(async()=>{if(await libraryUseWorkspace(item.workspace_id))selectReplacement(item);}), 'button secondary small'));actions.append(buttons);tr.append(actions);body.append(tr);}
  all.onchange=()=>{const checked=all.checked;for(const c of controls){c.checked=checked;c.onchange();}};table.append(head,body);wrap.append(table);box.append(wrap);
 }

@@ -35,6 +35,8 @@ def data(db,user):
   if req and req['state']!='needs_info' and req['draft_fingerprint']==workflow.fingerprint(payload):continue
   p=progress.get(r['workspace_id'],{})
   row={'kind':'draft','id':r['id'],'draft_id':r['id'],'workspace_id':r['workspace_id'],'workspace_title':allowed[r['workspace_id']]['title'],'title':payload['title'],'state':'reviewed' if payload.get('reviewed') else 'draft','stage':max(2,min(4,p.get('step',2))) if p.get('draft_id')==r['id'] else 3 if payload.get('reviewed') else 2,'created':r['created'],'updated':r['modified'] or r['created'],'version_order':r['version_order'] or 0}
+  row['can_delete']=auth_control.permission(db,user,r['workspace_id'])=='editor' and not db.execute('SELECT 1 FROM handover_requests WHERE draft_id=? LIMIT 1',(r['id'],)).fetchone()
+  if row['can_delete']:row['delete_token']=workflow.fingerprint(payload)
   drafts.append(row);items.append(row)
  counts={'drafts':len(drafts),'received':sum(r['recipient_account']==user['id'] and r['state'] in ('requested','reviewing','needs_info') for r in requests),'sent':sum(r['sender_account']==user['id'] and r['state']!='completed' for r in requests),'completed':sum(r['state']=='completed' for r in requests)}
  events=[];by_id={r['id']:r for r in requests}
@@ -56,12 +58,28 @@ def data(db,user):
 
 def handle_dashboard_request(handler,factory,method):
  path=urlsplit(handler.path).path
- if path not in ('/api/workbench','/api/workbench/read'):return False
+ if path not in ('/api/workbench','/api/workbench/read','/api/workbench/delete-draft'):return False
  try:
   params=parse_qs(urlsplit(handler.path).query);q=params.get('q',[''])[0].strip().casefold();status=params.get('status',['all'])[0];sort=params.get('sort',['updated'])[0];page=int(params.get('page',['1'])[0]);kind=params.get('kind',['all'])[0]
   if len(q)>100 or status not in STATES or sort not in ('updated','created','title') or kind not in ('all','draft','inbox','sent') or not 1<=page<=100000:raise ValueError()
   with closing(factory()) as db:
-   user=auth_control.identity(handler,db);items,counts,events=data(db,user)
+   user=auth_control.identity(handler,db)
+   if path=='/api/workbench/delete-draft':
+    if method!='POST':raise auth_control.AccessError(405,'POST 요청을 사용하세요.')
+    body=auth_control.read_json(handler);key=body.get('draft_id')
+    if type(key) is not int:raise ValueError()
+    db.execute('BEGIN IMMEDIATE')
+    draft=db.execute('SELECT id,workspace_id,payload FROM drafts WHERE id=? AND deleted=0',(key,)).fetchone()
+    if not draft:raise auth_control.AccessError(409,'이미 삭제된 문서입니다. 목록을 새로 불러오세요.')
+    auth_control.workspace_access(db,user,draft['workspace_id'],True)
+    if db.execute('SELECT 1 FROM handover_requests WHERE draft_id=? LIMIT 1',(key,)).fetchone():
+     raise auth_control.AccessError(409,'요청을 발송한 문서는 삭제할 수 없습니다. 보낸 인수인계에서 확인하세요.')
+    if body.get('expected_fingerprint')!=workflow.fingerprint(json.loads(draft['payload'])):
+     raise auth_control.AccessError(409,'문서가 변경되었습니다. 목록을 새로 불러온 뒤 삭제하세요.')
+    db.execute('UPDATE drafts SET deleted=1 WHERE id=?',(key,))
+    auth_control.audit(db,handler,'작성 중 인수인계서 논리 삭제',details=str(key))
+    db.commit();handler.respond(200,{'deleted':True});return True
+   items,counts,events=data(db,user)
    if path.endswith('/read'):
     if method!='POST':raise auth_control.AccessError(405,'읽음 처리는 POST 요청을 사용하세요.')
     body=auth_control.read_json(handler,32768);keys={e['key'] for e in events}

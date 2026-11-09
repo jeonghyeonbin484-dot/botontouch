@@ -9,8 +9,8 @@ def handle_library_request(handler,factory,method):
  if urlsplit(handler.path).path!='/api/library':return False
  try:
   if method!='GET':raise auth_control.AccessError(405,'자료함 목록은 조회 요청을 사용하세요.')
-  params=parse_qs(urlsplit(handler.path).query);kind=params.get('kind',['documents'])[0];query=params.get('q',[''])[0].strip().casefold();wid=int(params.get('workspace_id',['0'])[0]);page=int(params.get('page',['1'])[0]);status=params.get('status',['all'])[0];sort=params.get('sort',['updated'])[0];size=20
-  if status not in ('all','draft','saved','requested','reviewing','needs_info','accepted','completed') or sort not in ('updated','created','title') or kind not in ('documents','drafts','conversations') or len(query)>100 or wid<0 or not 1<=page<=100000:raise ValueError('자료함 검색 조건을 확인하세요.')
+  params=parse_qs(urlsplit(handler.path).query);kind=params.get('kind',['documents'])[0];query=params.get('q',[''])[0].strip().casefold();wid=int(params.get('workspace_id',['0'])[0]);page=int(params.get('page',['1'])[0]);status=params.get('status',['all'])[0];sort=params.get('sort',['updated'])[0];size=int(params.get('page_size',['20'])[0])
+  if not 20<=size<=200 or status not in ('all','draft','saved','requested','reviewing','needs_info','accepted','completed') or sort not in ('updated','created','title') or kind not in ('documents','drafts','conversations') or len(query)>100 or wid<0 or not 1<=page<=100000:raise ValueError('자료함 검색 조건을 확인하세요.')
   with closing(factory()) as db:
    user=auth_control.identity(handler,db);workspaces=[{**dict(r),'permission':auth_control.permission(db,user,r['id'])} for r in db.execute('SELECT id,title FROM workspaces ORDER BY id DESC') if auth_control.permission(db,user,r['id'])];allowed={w['id']:w for w in workspaces}
    received=list(db.execute('SELECT id,workspace_id,payload,documents,created,revision FROM handover_requests WHERE recipient_account=? ORDER BY id DESC',(user['id'],)))
