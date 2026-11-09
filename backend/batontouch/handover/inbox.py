@@ -6,6 +6,7 @@ from batontouch.handover import workflow as workflow
 
 def ensure(db):
  db.execute('CREATE TABLE IF NOT EXISTS request_answer_reviews(request_id INTEGER NOT NULL,revision INTEGER NOT NULL,recipient_account INTEGER NOT NULL,answer_token TEXT NOT NULL,confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(request_id,revision,recipient_account))')
+ db.execute('CREATE TABLE IF NOT EXISTS request_sender_hides(request_id INTEGER NOT NULL,sender_account INTEGER NOT NULL,hidden_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(request_id,sender_account))')
 
 
 def metrics(db,row):
@@ -21,7 +22,9 @@ def list_requests(db,user,query,kind):
  status=query.get('status',['all'])[0];q=query.get('q',[''])[0].strip();sort=query.get('sort',['created'])[0]
  paged='page' in query;page=int(query.get('page',['1'])[0]);size=int(query.get('page_size',['20' if paged else '200'])[0])
  if len(q)>100 or status not in ('all',*requests.STATES) or sort not in ('created','updated','title') or not 1<=page<=100000 or not 1<=size<=200:raise ValueError('검색 조건을 확인하세요.')
- scope=field+'=?';where=scope;args=[user['id']]
+ scope=field+'=?'
+ if kind=='sent':scope+=' AND NOT EXISTS (SELECT 1 FROM request_sender_hides h WHERE h.request_id=handover_requests.id AND h.sender_account=handover_requests.sender_account)'
+ where=scope;args=[user['id']]
  if status!='all':where+=' AND state=?';args.append(status)
  if q:
   fields=["json_extract(payload,'$.title')","json_extract(payload,'$.workspace.title')",*[f"json_extract({who}_snapshot,'$.{key}')" for who in ('sender','recipient') for key in ('name','department','position')]]
@@ -50,3 +53,19 @@ def confirm_answers(db,user,body):
  db.execute('INSERT INTO request_answer_reviews(request_id,revision,recipient_account,answer_token) VALUES(?,?,?,?) ON CONFLICT(request_id,revision,recipient_account) DO UPDATE SET answer_token=excluded.answer_token,confirmed_at=CURRENT_TIMESTAMP',(row['id'],row['revision'],user['id'],info['answer_token']))
  if not info['answers_reviewed']:requests.history(db,row,user,'추가 질문 답변 확인','최신 질문·답변 확인 완료')
  return {'saved':True}
+
+
+def hide_sent_requests(db,user,body,handler):
+ items=body.get('items')
+ if not isinstance(items,list) or not 1<=len(items)<=200:raise ValueError('요청을 1~200개 선택하세요.')
+ ids=[]
+ for item in items:
+  if not isinstance(item,dict) or type(item.get('id')) is not int or type(item.get('revision')) is not int:raise ValueError('요청과 버전을 확인하세요.')
+  row=db.execute('SELECT sender_account,revision FROM handover_requests WHERE id=?',(item['id'],)).fetchone()
+  if not row or row['sender_account']!=user['id']:raise auth_control.AccessError(403,'본인이 보낸 요청만 목록에서 삭제할 수 있습니다.')
+  if row['revision']!=item['revision']:raise auth_control.AccessError(409,'다시 전달된 요청이 있습니다. 목록을 새로 불러오세요.')
+  ids.append(item['id'])
+ if len(set(ids))!=len(ids):raise ValueError('중복된 요청이 있습니다.')
+ for key in ids:db.execute('INSERT OR IGNORE INTO request_sender_hides(request_id,sender_account) VALUES(?,?)',(key,user['id']))
+ auth_control.audit(db,handler,'보낸 인수인계 목록 삭제',details=json.dumps(ids))
+ return {'deleted':len(ids)}

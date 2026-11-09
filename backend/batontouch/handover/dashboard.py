@@ -23,9 +23,11 @@ def data(db,user):
  handover_requests.bind_pending_requests(db,user);db.commit()
  allowed={r['id']:dict(r) for r in db.execute('SELECT id,title FROM workspaces') if auth_control.permission(db,user,r['id'])}
  requests=[dict(r) for r in db.execute('SELECT id,workspace_id,draft_id,sender_account,recipient_account,state,created,updated,draft_fingerprint,sender_snapshot,recipient_snapshot,json_extract(payload,\'$.title\') AS title FROM handover_requests WHERE sender_account=? OR recipient_account=? ORDER BY id DESC',(user['id'],user['id']))]
+ hidden={r[0] for r in db.execute('SELECT request_id FROM request_sender_hides WHERE sender_account=?',(user['id'],))}
  latest={};items=[];drafts=[]
  for r in requests:
   latest.setdefault(r['draft_id'],r)
+  if r['sender_account']==user['id'] and r['id'] in hidden:continue
   peer=json.loads(r['sender_snapshot'] if r['recipient_account']==user['id'] else r['recipient_snapshot'])
   items.append({k:r[k] for k in ('id','workspace_id','draft_id','state','created','updated','title')}|{'kind':'request','box':'inbox' if r['recipient_account']==user['id'] else 'sent','workspace_title':allowed.get(r['workspace_id'],{}).get('title',''),'person':str(peer.get('name','')),'stage':7 if r['state']=='completed' else 6 if r['state']=='accepted' else 3 if r['state']=='needs_info' else 5})
  progress={r['workspace_id']:dict(r) for r in db.execute('SELECT * FROM journey_progress')}
@@ -38,8 +40,8 @@ def data(db,user):
   row['can_delete']=auth_control.permission(db,user,r['workspace_id'])=='editor' and not db.execute('SELECT 1 FROM handover_requests WHERE draft_id=? LIMIT 1',(r['id'],)).fetchone()
   if row['can_delete']:row['delete_token']=workflow.fingerprint(payload)
   drafts.append(row);items.append(row)
- counts={'drafts':len(drafts),'received':sum(r['recipient_account']==user['id'] and r['state'] in ('requested','reviewing','needs_info') for r in requests),'sent':sum(r['sender_account']==user['id'] and r['state']!='completed' for r in requests),'completed':sum(r['state']=='completed' for r in requests)}
- events=[];by_id={r['id']:r for r in requests}
+ counts={'drafts':len(drafts),'received':sum(r['recipient_account']==user['id'] and r['state'] in ('requested','reviewing','needs_info') for r in requests),'sent':sum(r['sender_account']==user['id'] and r['state']!='completed' and r['id'] not in hidden for r in requests),'completed':sum(r['state']=='completed' and not (r['sender_account']==user['id'] and r['id'] in hidden) for r in requests)}
+ events=[];by_id={r['id']:r for r in requests if not (r['sender_account']==user['id'] and r['id'] in hidden)}
  def add(key,rid,label,created):
   r=by_id.get(rid)
   if r:events.append({'key':key,'request_id':rid,'label':label,'title':r['title'],'created':created,'box':'inbox' if r['recipient_account']==user['id'] else 'sent'})

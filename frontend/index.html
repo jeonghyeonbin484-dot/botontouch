@@ -1561,9 +1561,24 @@ for(const [label,field] of [['업무명 검색',sentQuery],['진행 상태',sent
 const sentSearch=()=>{clearTimeout(sentSearchTimer);sentPage=1;void loadSentRequests();};sentForm.append(button('검색',sentSearch,'button secondary small'),button('검색 초기화',()=>{sentQuery.value='';sentStatus.value='all';sentSort.value='created';sentSearch();},'button secondary small'));
 $('sent-requests').before(sentForm,sentSummary,sentError);$('sent-requests').after(sentPages);sentPanel.querySelector('h2').textContent='보낸 요청 목록';
 let sentPage=1,sentEpoch=0,sentPending=null,sentPendingKey='',sentSearchTimer=null,sentPoll=null,sentFailures=0;
+const sentDeleteSelection=new Map();let sentDeleteBusy=false;
+const sentDeleteTools=node('div','form-actions'),sentDeleteCount=node('span','muted');sentDeleteTools.id='sent-delete-tools';
+function paintSentDeleteTools(){sentDeleteCount.textContent=sentDeleteSelection.size+'개 선택';sentDeleteButton.disabled=sentDeleteBusy||!sentDeleteSelection.size;sentSelectAllButton.disabled=sentDeleteBusy;document.querySelectorAll('[data-sent-delete-id]').forEach(input=>{input.checked=sentDeleteSelection.has(Number(input.dataset.sentDeleteId));input.disabled=sentDeleteBusy;});}
+async function deleteSentRows(rows){
+ if(sentDeleteBusy||state.busy.size||!rows.length||!libraryCanNavigate())return;
+ sentDeleteBusy=true;paintSentDeleteTools();
+ try{if(!await confirmAction('보낸 목록에서 '+rows.length+'건을 삭제할까요?','내 보낸 목록에서 숨깁니다. 인수자의 받은 요청과 문서·첨부파일·대화·처리 이력은 유지되며 요청 취소로 처리하지 않습니다.','목록에서 삭제'))return;
+  if(!libraryCanNavigate())return;
+  await post('/api/requests/delete-sent',{items:rows.map(r=>({id:r.id,revision:r.revision}))});
+  sentDeleteSelection.clear();if(sentPending)await sentPending;await loadSentRequests(true);await loadJourneyDashboard();toast(rows.length+'건을 보낸 목록에서 삭제했습니다.');
+ }catch(error){sentError.textContent=error.message;sentError.hidden=false;}finally{sentDeleteBusy=false;paintSentDeleteTools();}
+}
+const sentSelectAllButton=button('전체 선택',async()=>{if(sentDeleteBusy)return;sentDeleteBusy=true;paintSentDeleteTools();try{const params=new URLSearchParams({box:'sent',page:1,page_size:200,q:sentQuery.value.trim(),status:sentStatus.value,sort:sentSort.value});const data=await api('/api/requests?'+params);if(data.user_id!==account.user?.id)return;if(data.filtered_total>200)throw Error('한 번에 200건까지 선택할 수 있습니다. 검색 조건을 좁혀 주세요.');sentDeleteSelection.clear();for(const row of data.items)sentDeleteSelection.set(row.id,row);}catch(error){sentError.textContent=error.message;sentError.hidden=false;}finally{sentDeleteBusy=false;paintSentDeleteTools();}},'button secondary small');sentSelectAllButton.id='sent-select-all';
+const sentDeleteButton=button('선택 삭제',()=>void deleteSentRows([...sentDeleteSelection.values()]),'button secondary small danger-text');sentDeleteButton.id='sent-delete-selected';
+sentDeleteTools.append(sentSelectAllButton,button('선택 해제',()=>{if(sentDeleteBusy)return;sentDeleteSelection.clear();paintSentDeleteTools();},'text-button'),sentDeleteButton,sentDeleteCount);sentForm.after(sentDeleteTools);paintSentDeleteTools();
 function paintSentRequests(data){
  sentSummary.textContent='검색 결과 '+data.filtered_total+'건 / 전체 '+data.total+'건 · '+data.page+'페이지';sentPage=data.page;
- const host=$('sent-requests');host.replaceChildren();for(const r of data.items)host.append(handoverRequestCard(r,'sent'));
+ const host=$('sent-requests');host.replaceChildren();for(const r of data.items){const card=handoverRequestCard(r,'sent'),tools=node('div','form-actions'),check=node('input');check.type='checkbox';check.dataset.sentDeleteId=r.id;check.setAttribute('aria-label',r.title+' 선택');check.checked=sentDeleteSelection.has(r.id);check.onchange=()=>{if(check.checked)sentDeleteSelection.set(r.id,r);else sentDeleteSelection.delete(r.id);paintSentDeleteTools();};const label=node('label','','선택');label.prepend(check);tools.append(label,button('삭제',()=>void deleteSentRows([r]),'text-button danger-text'));card.prepend(tools);host.append(card);}paintSentDeleteTools();
  if(!data.items.length)host.append(node('p','received-empty',data.total?'검색 조건에 맞는 요청이 없습니다. 검색어나 상태를 바꿔 보세요.':'아직 보낸 인수인계 요청이 없습니다.'));
  sentPages.replaceChildren();for(const [label,delta] of [['이전',-1],['다음',1]]){const b=button(label,()=>{sentPage+=delta;void loadSentRequests();},'button secondary small');b.disabled=delta<0?data.page<=1:data.page*data.page_size>=data.filtered_total;sentPages.append(b);}sentPages.hidden=data.filtered_total<=data.page_size;sentError.hidden=true;
 }

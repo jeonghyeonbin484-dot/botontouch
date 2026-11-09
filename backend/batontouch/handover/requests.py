@@ -434,6 +434,8 @@ def handle_handover_request(handler,factory,method,source_changes=None):
                     result={'id':send(db,user,body,source_changes)}
                 elif path=='/api/requests/action':
                     act(db,user,body,source_changes);result={'saved':True}
+                elif path=='/api/requests/delete-sent':
+                    result=__import__('request_inbox').hide_sent_requests(db,user,body,handler)
                 elif path=='/api/requests/answers-reviewed':
                     result=__import__('request_inbox').confirm_answers(db,user,body)
                 else:fail(404,'요청 경로가 없습니다.')
