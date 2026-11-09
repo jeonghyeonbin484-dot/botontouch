@@ -17,3 +17,6 @@ artifacts/
 
 *.pyc
 .pytest_cache/
+
+/test/테스트계정.txt
+/test/test-accounts.private.md

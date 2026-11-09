@@ -30,3 +30,19 @@ const staffBusyOriginal=syncBusyControls;syncBusyControls=function(){staffBusyOr
 // 관리자 본인확인 후 기존 직원 계정의 일회용 활성화 코드 발급.
 
 const firstPasswordPanel=node('section','panel');firstPasswordPanel.id='staff-first-password-setup';firstPasswordPanel.hidden=true;const identityCsv=node('input');identityCsv.type='file';identityCsv.accept='.csv';identityCsv.setAttribute('aria-label','공식 직원 개인 이메일 CSV');const identityProof=node('input');identityProof.type='checkbox';const identityProofLabel=node('label','','공식 조직도의 직원별 개인 이메일임을 확인했습니다.');identityProofLabel.prepend(identityProof);const identityStatus=node('p');identityStatus.setAttribute('role','status');firstPasswordPanel.append(node('h2','','직원 최초 비밀번호 설정 일괄 준비'),node('p','','공식 개인 이메일 목록을 한 번 연결하면 직원은 메일 본인확인 후 비밀번호를 직접 설정할 수 있습니다. 공용·부서 이메일은 사용할 수 없습니다.'),node('p','muted','CSV 열 제목: employee_id,saeoll_id,email · 직원 식별값과 기존 새올 ID가 일치해야 합니다.'),identityCsv,identityProofLabel,button('공식 본인확인 이메일 일괄 등록',async()=>{const file=identityCsv.files[0];if(!file||file.size>1024*1024||!identityProof.checked){identityStatus.textContent='1MB 이하 공식 CSV와 개인 이메일 확인이 필요합니다.';return;}await accountJob(async()=>{const result=await post('/api/auth/first-password/channels',{csv:await file.text(),official_source_confirmed:true});identityStatus.textContent=result.registered+'명의 본인확인 수단을 등록했습니다.';identityCsv.value='';identityProof.checked=false;});},'button secondary'),identityStatus);$('page-accounts').prepend(firstPasswordPanel);const firstPasswordPaint=paintStaffProfile;paintStaffProfile=function(){firstPasswordPaint();firstPasswordPanel.hidden=account.user?.role!=='admin';};
+
+// 비밀번호는 요청에만 사용하며 브라우저 저장소나 생성 결과에 보관하지 않는다.
+$('staff-create-form').onsubmit = event => {
+    event.preventDefault();
+    void accountJob(async () => {
+        const username = $('staff-create-username').value.trim().toLowerCase();
+        const result = await post('/api/auth/users/create', {
+            username,
+            password: $('staff-create-password').value
+        });
+        $('staff-create-form').reset();
+        await loadManagedAccounts();
+        accountMessage(result.username + ' 계정을 생성했습니다. 최초 로그인 시 비밀번호를 변경해야 합니다.' +
+            (result.employee_linked ? ' 조직도 직원과 연결했습니다.' : ' 직원정보는 미연결 상태입니다.'));
+    });
+};

@@ -144,6 +144,36 @@ def staff_for_account(db,employee_id):
     validate_username(row['saeoll_id']);return row
 
 
+def create_managed_account(db, handler, body):
+    """관리자가 지정한 초기 비밀번호로 일반 계정을 발급한다."""
+    username = body.get('username')
+    username = validate_username(username.strip() if isinstance(username, str) else username)
+    password = body.get('password')
+    passwords.validate(password)
+    if body.get('role', 'member') != 'member':
+        raise AccessError(403, '신규 계정은 일반 직원 권한으로만 생성할 수 있습니다.')
+    if db.execute('SELECT 1 FROM users WHERE lower(username)=?', (username,)).fetchone():
+        raise AccessError(409, '이미 사용 중인 아이디입니다. 기존 계정을 확인하세요.')
+    matches = db.execute('SELECT employee_id FROM org_employees WHERE lower(saeoll_id)=?', (username,)).fetchall()
+    if len(matches) > 1:
+        raise AccessError(409, '동일한 새올 ID의 직원정보가 여러 건입니다. 조직도 정보를 먼저 확인하세요.')
+    staff = staff_for_account(db, matches[0]['employee_id']) if matches else None
+    if staff:
+        if staff['source'] == 'test' and not server_settings.dev_test_accounts():
+            raise AccessError(403, '현재 환경에서는 개발용 직원 계정을 생성할 수 없습니다.')
+        if db.execute('SELECT 1 FROM employee_accounts WHERE employee_id=?', (staff['employee_id'],)).fetchone():
+            raise AccessError(409, '해당 직원에게 연결된 계정이 이미 있습니다.')
+    cursor = db.execute("INSERT INTO users(username,password_hash,salt,role,active,must_change_password,is_test,initial_shared) VALUES(?,?,'','member',1,1,?,0)",
+                        (username, passwords.hash_password(password), int(bool(staff and staff['source'] == 'test'))))
+    user_id = cursor.lastrowid
+    if staff:
+        db.execute('INSERT INTO employee_accounts(employee_id,user_id,linked_by) VALUES(?,?,?)',
+                   (staff['employee_id'], user_id, handler.user['id']))
+    audit(db, handler, '관리자 신규 계정 생성', user_id)
+    return {'id': user_id, 'username': username, 'active': True, 'must_change_password': True,
+            'employee_linked': bool(staff)}
+
+
 def provision(db,handler,body):
     staff=staff_for_account(db,body.get('employee_id'))
     if body.get('approved') is not True:raise ValueError('관리자가 계정 발급·활성화를 확인해야 합니다.')
@@ -252,6 +282,10 @@ def handle_authentication_request(handler,factory,method):
             if user['role']!='admin':raise AccessError(403,'관리자 권한이 필요합니다.')
             if path=='/api/auth/users' and method=='GET':
                 handler.respond(200,[profile(db,r) for r in db.execute('SELECT * FROM users ORDER BY id')]);return True
+            if path=='/api/auth/users/create' and method=='POST':
+                body=read_json(handler);db.execute('BEGIN IMMEDIATE')
+                result=create_managed_account(db,handler,body)
+                db.commit();json_cookie(handler,result);return True
             if path in ('/api/auth/staff','/api/auth/users') and method=='POST':
                 body=read_json(handler);db.execute('BEGIN IMMEDIATE');result=provision(db,handler,body);db.commit();json_cookie(handler,result);return True
             if path=='/api/auth/account' and method=='POST':
