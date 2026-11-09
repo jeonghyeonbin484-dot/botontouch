@@ -1258,19 +1258,53 @@ $('journey-start').onclick=startHandover;
 const workbenchLabels={draft:'작성 중',reviewed:'검토 완료',requested:'인수 요청',reviewing:'인수자 확인 중',needs_info:'보완 요청',accepted:'인수 수락',completed:'완료'};
 function workbenchProgress(stage){const list=node('ol','workbench-progress');list.setAttribute('aria-label','진행 상태: '+['자료 등록','문서 작성','검토','후임자 지정','인수 요청','수락','완료'][stage-1]);['자료','작성','검토','지정','요청','수락','완료'].forEach((text,i)=>{const item=node('li',i+1<stage?'done':i+1===stage?'current':'',text);if(i+1===stage)item.setAttribute('aria-current','step');list.append(item);});return list;}
 async function workbenchOpen(item){if(!libraryCanNavigate())return;if(item.kind==='draft'){if(!await libraryUseWorkspace(item.workspace_id))return;const draft=state.drafts.find(d=>d.id===item.id);if(!draft){toast('문서를 다시 불러와 주세요.');return;}openDraft(draft);journeyNew=false;journeyStep=Math.max(2,Math.min(4,item.stage));journeyWorkspace=state.workspace;location.hash='journey';mountJourney();paintJourney();}else{location.hash=item.box;await loadRequestCentre();await openAddressedRequest(item.id);}}
+const workbenchDraftSelection=new Map();let workbenchSelectionUser=null,workbenchSelectionBusy=false;
+const workbenchDraftTools=node('div','form-actions');workbenchDraftTools.id='workbench-draft-selection';
+const workbenchDraftCount=node('span','muted');workbenchDraftCount.setAttribute('role','status');
+function paintWorkbenchDraftSelection(){
+ workbenchDraftCount.textContent=workbenchDraftSelection.size+'개 선택';
+ workbenchDeleteSelected.disabled=workbenchSelectionBusy||!workbenchDraftSelection.size;
+ workbenchSelectAll.disabled=workbenchClearSelection.disabled=workbenchSelectionBusy;
+ document.querySelectorAll('[data-workbench-draft-checkbox]').forEach(input=>{input.checked=workbenchDraftSelection.has(Number(input.dataset.workbenchDraftCheckbox));input.disabled=workbenchSelectionBusy;});
+}
+const workbenchSelectAll=button('전체 선택',async()=>{
+ if(workbenchSelectionBusy||state.busy.size)return;
+ workbenchSelectionBusy=true;paintWorkbenchDraftSelection();
+ try{const result=await api('/api/workbench?kind=draft&page_size=200');
+  if(result.user_id!==account.user?.id)return;
+  if(result.total>200)throw Error('한 번에 200개까지 선택할 수 있습니다. 개별 체크박스로 문서를 선택해 주세요.');
+  workbenchDraftSelection.clear();for(const item of result.items)if(item.can_delete)workbenchDraftSelection.set(item.id,item);
+ }catch(error){toast(error.message);}finally{workbenchSelectionBusy=false;paintWorkbenchDraftSelection();}
+},'button secondary small');workbenchSelectAll.id='workbench-select-all-drafts';
+const workbenchClearSelection=button('선택 해제',()=>{workbenchDraftSelection.clear();paintWorkbenchDraftSelection();},'text-button');
+const workbenchDeleteSelected=button('선택 삭제',async()=>{
+ if(workbenchSelectionBusy||state.busy.size||!workbenchDraftSelection.size||!libraryCanNavigate())return;
+ workbenchSelectionBusy=true;paintWorkbenchDraftSelection();
+ try{const selected=[...workbenchDraftSelection.values()];
+  if(!await confirmAction('선택한 인수인계서 '+selected.length+'개를 삭제할까요?','홈과 문서 목록에서 제외합니다. 원본 자료와 AI 대화·수정 이력은 보존합니다. 발송된 문서나 변경된 문서가 포함되면 전체 삭제를 중단합니다.','선택 삭제'))return;
+  if(!libraryCanNavigate())return;
+  setBusy('delete-home-drafts',true);
+  const result=await post('/api/workbench/delete-drafts',{items:selected.map(item=>({draft_id:item.id,expected_fingerprint:item.delete_token}))});
+  if(state.draft&&workbenchDraftSelection.has(state.draft.id)){state.draft=null;state.draftDirty=false;renderEditor();updateDirty();}
+  workbenchDraftSelection.clear();await loadAll();if(workbenchPending)await workbenchPending;await loadJourneyDashboard();toast(result.deleted+'개 인수인계서를 목록에서 삭제했습니다.');
+ }catch(error){toast(error.message);message('global-message',error.message,'error');}
+ finally{setBusy('delete-home-drafts',false);workbenchSelectionBusy=false;paintWorkbenchDraftSelection();}
+},'button secondary small danger-text');workbenchDeleteSelected.id='workbench-delete-selected-drafts';
+workbenchDraftTools.append(workbenchSelectAll,workbenchClearSelection,workbenchDeleteSelected,workbenchDraftCount);
+$('journey-dashboard-drafts').before(workbenchDraftTools);paintWorkbenchDraftSelection();
 async function deleteWorkbenchDraft(item){
  if(state.busy.size||!libraryCanNavigate())return;
  if(!await confirmAction('작성 중인 인수인계서를 삭제할까요?',item.title+'\n\n홈과 문서 목록에서 제외합니다. 원본 자료와 AI 대화·수정 이력은 보존합니다. 요청을 발송한 문서는 삭제할 수 없습니다.','삭제하기'))return;
  if(!libraryCanNavigate())return;
  setBusy('delete-home-draft',true);
  try{
-  await post('/api/workbench/delete-draft',{draft_id:item.id,expected_fingerprint:item.delete_token});
+  await post('/api/workbench/delete-draft',{draft_id:item.id,expected_fingerprint:item.delete_token});workbenchDraftSelection.delete(item.id);paintWorkbenchDraftSelection();
   if(state.draft?.id===item.id){state.draft=null;state.draftDirty=false;renderEditor();updateDirty();}
   await loadAll();if(workbenchPending)await workbenchPending;await loadJourneyDashboard();toast('작성 중인 인수인계서를 목록에서 삭제했습니다.');
  }catch(error){toast(error.message);message('global-message',error.message,'error');}
  finally{setBusy('delete-home-draft',false);}
 }
-function workbenchCard(item,compact=false){const card=node('article','workbench-card'+(compact?' compact':'')),head=node('div','workbench-card-heading');head.append(button(item.title,()=>void workbenchOpen(item),'text-button workbench-document-title'),node('span','badge '+(item.state==='needs_info'?'amber':'neutral'),workbenchLabels[item.state]||item.state));if(item.kind==='draft'&&item.can_delete){const remove=button('삭제',()=>void deleteWorkbenchDraft(item),'text-button danger-text');remove.setAttribute('aria-label',item.title+' 삭제');head.append(remove);}card.dataset.workbenchId=item.id;card.append(head,node('p','muted',item.workspace_title+(item.person?' · '+item.person:'')+' · '+(item.kind==='draft'?'작성 문서':item.box==='inbox'?'받은 요청':'보낸 요청')),workbenchProgress(item.stage));const time=node('small','muted','최근 수정 '+formatRequestTime(item.updated));card.append(time);return card;}
+function workbenchCard(item,compact=false){const card=node('article','workbench-card'+(compact?' compact':'')),head=node('div','workbench-card-heading');head.append(button(item.title,()=>void workbenchOpen(item),'text-button workbench-document-title'),node('span','badge '+(item.state==='needs_info'?'amber':'neutral'),workbenchLabels[item.state]||item.state));if(compact&&item.kind==='draft'&&item.can_delete){const select=node('input');select.type='checkbox';select.dataset.workbenchDraftCheckbox=item.id;select.setAttribute('aria-label',item.title+' 선택');select.checked=workbenchDraftSelection.has(item.id);select.disabled=workbenchSelectionBusy;select.onchange=()=>{if(select.checked)workbenchDraftSelection.set(item.id,item);else workbenchDraftSelection.delete(item.id);paintWorkbenchDraftSelection();};head.prepend(select);}if(item.kind==='draft'&&item.can_delete){const remove=button('삭제',()=>void deleteWorkbenchDraft(item),'text-button danger-text');remove.setAttribute('aria-label',item.title+' 삭제');head.append(remove);}card.dataset.workbenchId=item.id;card.append(head,node('p','muted',item.workspace_title+(item.person?' · '+item.person:'')+' · '+(item.kind==='draft'?'작성 문서':item.box==='inbox'?'받은 요청':'보낸 요청')),workbenchProgress(item.stage));const time=node('small','muted','최근 수정 '+formatRequestTime(item.updated));card.append(time);return card;}
 let workbenchPage=1,workbenchPending=null,workbenchPendingKey='',workbenchEpoch=0,workbenchFailures=0,workbenchSearchTimer=null,workbenchTimer=null;
 paths.bell='M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4';
 const workbenchBell=button('업무 알림',()=>{workbenchAlerts.showModal();void loadJourneyDashboard();},'button secondary small workbench-bell','bell'),workbenchBellLabel=node('span','workbench-bell-label','알림'),workbenchBadge=node('span','badge','0');workbenchBadge.hidden=true;workbenchBell.append(workbenchBellLabel,workbenchBadge);for(const child of [...workbenchBell.childNodes])if(child.nodeType===Node.TEXT_NODE)child.remove();workbenchBell.id='workbench-bell';document.querySelector('.topbar-right').prepend(workbenchBell);
@@ -1279,7 +1313,7 @@ const alertReadAll=button('모두 읽음',async()=>{alertReadAll.disabled=true;t
 function paintWorkbenchAlerts(data){workbenchBadge.textContent=String(data.unread);workbenchBadge.hidden=!data.unread;workbenchBell.setAttribute('aria-label','업무 알림 · 읽지 않은 최근 알림 '+data.unread+'건');alertError.hidden=true;alertList.replaceChildren();if(!data.notifications.length)alertList.append(node('p','muted','아직 도착한 업무 알림이 없습니다.'));
  for(const e of data.notifications){const row=button('',async()=>{if(!libraryCanNavigate())return;try{await post('/api/workbench/read',{keys:[e.key]});workbenchAlerts.close();await workbenchOpen({kind:'request',id:e.request_id,box:e.box});void loadJourneyDashboard();}catch(error){alertError.textContent=error.message;alertError.hidden=false;}},'workbench-notification-row'+(e.read?' read':''));row.setAttribute('aria-label',(e.read?'읽음 · ':'읽지 않음 · ')+e.label+' · '+e.title);row.append(node('strong','',e.label),node('span','',e.title),node('small','muted',formatRequestTime(e.created)));alertList.append(row);}}
 loadJourneyDashboard=async function(){if(!account.user)return;const params=new URLSearchParams({q:$('workbench-query').value.trim(),kind:$('workbench-kind').value,status:$('workbench-status').value,sort:$('workbench-sort').value,page:workbenchPage}),key=params.toString();if(workbenchPending&&workbenchPendingKey===key)return workbenchPending;const seq=++workbenchEpoch;workbenchPendingKey=key;
- const task=(async()=>{try{const data=await api('/api/workbench?'+params);if(seq!==workbenchEpoch||data.user_id!==account.user?.id)return;workbenchFailures=0;const counts=$('journey-dashboard-counts');counts.replaceChildren();for(const [label,k,kind,status] of [['작성 중','drafts','draft','all'],['받은 요청','received','inbox','all'],['보낸 요청','sent','sent','all'],['완료','completed','all','completed']]){const card=button('',()=>{$('workbench-kind').value=kind;$('workbench-status').value=status;$('workbench-query').value='';workbenchPage=1;void loadJourneyDashboard();$('workbench-search-form').scrollIntoView({block:'center',behavior:'smooth'});},'workbench-count');card.setAttribute('aria-label',label+' '+data.counts[k]+'건');card.append(node('span','',label),node('strong','',String(data.counts[k])));counts.append(card);}
+ const task=(async()=>{try{const data=await api('/api/workbench?'+params);if(seq!==workbenchEpoch||data.user_id!==account.user?.id)return;if(workbenchSelectionUser!==data.user_id){workbenchDraftSelection.clear();workbenchSelectionUser=data.user_id;}paintWorkbenchDraftSelection();workbenchFailures=0;const counts=$('journey-dashboard-counts');counts.replaceChildren();for(const [label,k,kind,status] of [['작성 중','drafts','draft','all'],['받은 요청','received','inbox','all'],['보낸 요청','sent','sent','all'],['완료','completed','all','completed']]){const card=button('',()=>{$('workbench-kind').value=kind;$('workbench-status').value=status;$('workbench-query').value='';workbenchPage=1;void loadJourneyDashboard();$('workbench-search-form').scrollIntoView({block:'center',behavior:'smooth'});},'workbench-count');card.setAttribute('aria-label',label+' '+data.counts[k]+'건');card.append(node('span','',label),node('strong','',String(data.counts[k])));counts.append(card);}
   for(const [id,rows,text] of [['journey-dashboard-drafts',data.drafts,'작성 중인 인수인계가 없습니다. 새 업무를 시작해 보세요.'],['workbench-received',data.received,'확인할 받은 요청이 없습니다.']]){const host=$(id);host.replaceChildren();for(const item of rows)host.append(workbenchCard(item,true));if(!rows.length)host.append(node('p','workbench-empty',text));}
   $('workbench-summary').textContent='검색 결과 '+data.total+'건 · '+data.page+'페이지';const results=$('workbench-results');results.replaceChildren();for(const item of data.items)results.append(workbenchCard(item));if(!data.items.length)results.append(node('p','workbench-empty','조건에 맞는 인수인계가 없습니다. 검색어나 상태를 바꿔 보세요.'));
   const pages=$('workbench-pages');pages.replaceChildren();for(const [text,direction] of [['이전',-1],['다음',1]]){const b=button(text,()=>{workbenchPage+=direction;void loadJourneyDashboard();},'button secondary small');b.disabled=direction<0?data.page<=1:data.page*data.page_size>=data.total;pages.append(b);}paintWorkbenchAlerts(data);$('journey-dashboard-error').hidden=true;

@@ -56,29 +56,38 @@ def data(db,user):
  return items,counts,events
 
 
+def checked_deletion(db,user,item):
+ key=item.get('draft_id') if isinstance(item,dict) else None
+ if type(key) is not int:raise ValueError()
+ draft=db.execute('SELECT id,workspace_id,payload FROM drafts WHERE id=? AND deleted=0',(key,)).fetchone()
+ if not draft:raise auth_control.AccessError(409,'이미 삭제된 문서입니다. 목록을 새로 불러오세요.')
+ auth_control.workspace_access(db,user,draft['workspace_id'],True)
+ if db.execute('SELECT 1 FROM handover_requests WHERE draft_id=? LIMIT 1',(key,)).fetchone():
+  raise auth_control.AccessError(409,'요청을 발송한 문서는 삭제할 수 없습니다. 보낸 인수인계에서 확인하세요.')
+ if item.get('expected_fingerprint')!=workflow.fingerprint(json.loads(draft['payload'])):
+  raise auth_control.AccessError(409,'문서가 변경되었습니다. 목록을 새로 불러온 뒤 삭제하세요.')
+ return key
+
+
 def handle_dashboard_request(handler,factory,method):
  path=urlsplit(handler.path).path
- if path not in ('/api/workbench','/api/workbench/read','/api/workbench/delete-draft'):return False
+ if path not in ('/api/workbench','/api/workbench/read','/api/workbench/delete-draft','/api/workbench/delete-drafts'):return False
  try:
-  params=parse_qs(urlsplit(handler.path).query);q=params.get('q',[''])[0].strip().casefold();status=params.get('status',['all'])[0];sort=params.get('sort',['updated'])[0];page=int(params.get('page',['1'])[0]);kind=params.get('kind',['all'])[0]
-  if len(q)>100 or status not in STATES or sort not in ('updated','created','title') or kind not in ('all','draft','inbox','sent') or not 1<=page<=100000:raise ValueError()
+  params=parse_qs(urlsplit(handler.path).query);q=params.get('q',[''])[0].strip().casefold();status=params.get('status',['all'])[0];sort=params.get('sort',['updated'])[0];page=int(params.get('page',['1'])[0]);kind=params.get('kind',['all'])[0];size=int(params.get('page_size',['20'])[0])
+  if not 20<=size<=200 or len(q)>100 or status not in STATES or sort not in ('updated','created','title') or kind not in ('all','draft','inbox','sent') or not 1<=page<=100000:raise ValueError()
   with closing(factory()) as db:
    user=auth_control.identity(handler,db)
-   if path=='/api/workbench/delete-draft':
+   if path in ('/api/workbench/delete-draft','/api/workbench/delete-drafts'):
     if method!='POST':raise auth_control.AccessError(405,'POST 요청을 사용하세요.')
-    body=auth_control.read_json(handler);key=body.get('draft_id')
-    if type(key) is not int:raise ValueError()
+    body=auth_control.read_json(handler,32768)
+    selected=[body] if path.endswith('/delete-draft') else body.get('items')
+    if not isinstance(selected,list) or not 1<=len(selected)<=200:raise ValueError('문서를 1~200개 선택하세요.')
     db.execute('BEGIN IMMEDIATE')
-    draft=db.execute('SELECT id,workspace_id,payload FROM drafts WHERE id=? AND deleted=0',(key,)).fetchone()
-    if not draft:raise auth_control.AccessError(409,'이미 삭제된 문서입니다. 목록을 새로 불러오세요.')
-    auth_control.workspace_access(db,user,draft['workspace_id'],True)
-    if db.execute('SELECT 1 FROM handover_requests WHERE draft_id=? LIMIT 1',(key,)).fetchone():
-     raise auth_control.AccessError(409,'요청을 발송한 문서는 삭제할 수 없습니다. 보낸 인수인계에서 확인하세요.')
-    if body.get('expected_fingerprint')!=workflow.fingerprint(json.loads(draft['payload'])):
-     raise auth_control.AccessError(409,'문서가 변경되었습니다. 목록을 새로 불러온 뒤 삭제하세요.')
-    db.execute('UPDATE drafts SET deleted=1 WHERE id=?',(key,))
-    auth_control.audit(db,handler,'작성 중 인수인계서 논리 삭제',details=str(key))
-    db.commit();handler.respond(200,{'deleted':True});return True
+    keys=[checked_deletion(db,user,item) for item in selected]
+    if len(set(keys))!=len(keys):raise ValueError('중복된 문서가 있습니다.')
+    for key in keys:db.execute('UPDATE drafts SET deleted=1 WHERE id=?',(key,))
+    auth_control.audit(db,handler,'작성 중 인수인계서 논리 삭제',details=json.dumps(keys))
+    db.commit();handler.respond(200,{'deleted':True} if path.endswith('/delete-draft') else {'deleted':len(keys)});return True
    items,counts,events=data(db,user)
    if path.endswith('/read'):
     if method!='POST':raise auth_control.AccessError(405,'읽음 처리는 POST 요청을 사용하세요.')
@@ -91,7 +100,7 @@ def handle_dashboard_request(handler,factory,method):
    filtered=[r for r in items if (kind=='all' or (r['kind']=='draft' if kind=='draft' else r.get('box')==kind)) and (status=='all' or r['state']==status) and (not q or q in (r['title']+' '+r['workspace_title']+' '+r.get('person','')).casefold())]
    if sort=='created':filtered.sort(key=lambda r:(stamp(r['created']),r['id']),reverse=True)
    elif sort=='title':filtered.sort(key=lambda r:(r['title'].casefold(),-r['id']))
-   handler.respond(200,{'user_id':user['id'],'counts':counts,'items':filtered[(page-1)*20:page*20],'total':len(filtered),'page':page,'page_size':20,'drafts':[r for r in items if r['kind']=='draft'][:5],'received':[r for r in items if r['kind']=='request' and r['box']=='inbox' and r['state'] in ('requested','reviewing','needs_info')][:5],'notifications':events[:60],'unread':sum(not e['read'] for e in events),'notification_total':len(events)})
+   handler.respond(200,{'user_id':user['id'],'counts':counts,'items':filtered[(page-1)*size:page*size],'total':len(filtered),'page':page,'page_size':size,'drafts':[r for r in items if r['kind']=='draft'][:5],'received':[r for r in items if r['kind']=='request' and r['box']=='inbox' and r['state'] in ('requested','reviewing','needs_info')][:5],'notifications':events[:60],'unread':sum(not e['read'] for e in events),'notification_total':len(events)})
  except auth_control.AccessError as error:handler.respond(error.status,{'error':error.message})
  except (ValueError,TypeError,KeyError):handler.respond(400,{'error':'검색 조건을 확인하세요.'})
  except sqlite3.Error:handler.respond(503,{'error':'업무 목록을 불러오지 못했습니다. 저장된 데이터는 유지됩니다.'})

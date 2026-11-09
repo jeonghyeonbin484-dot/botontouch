@@ -55,3 +55,31 @@ class BulkAndHomeDeleteTests(unittest.TestCase):
   self.f.call('/api/requests/send',{'workspace_id':1,'draft_id':d['id'],'fingerprint':d['edit_token'],'recipient_employee':'DEMO-B'},self.a)
   self.reject('/api/workbench/delete-draft',{'draft_id':d['id'],'expected_fingerprint':d['edit_token']},status=409)
   self.assertEqual(self.f.call('/api/requests?box=sent',client=self.a)['pending'],1)
+
+ def test_bulk_home_delete_and_stale_guard_are_atomic(self):
+  doc=self.upload();self.draft(doc);self.draft(doc)
+  rows=self.f.call('/api/workbench?kind=draft&page_size=200',client=self.a)['items']
+  self.assertEqual(len(rows),2)
+  selected=[{'draft_id':r['id'],'expected_fingerprint':r['delete_token']} for r in rows]
+  self.reject('/api/workbench/delete-drafts',{'items':[selected[0],{**selected[1],'expected_fingerprint':'stale'}]},status=409)
+  self.assertEqual(self.f.call('/api/workbench',client=self.a)['counts']['drafts'],2)
+  result=self.f.call('/api/workbench/delete-drafts',{'items':selected},self.a)
+  self.assertEqual(result['deleted'],2)
+  self.assertEqual(self.f.call('/api/workbench',client=self.a)['counts']['drafts'],0)
+  db=sqlite3.connect(':memory:');db.deserialize(self.f.memory.payload)
+  self.assertEqual(db.execute('SELECT count(*) FROM drafts WHERE deleted=1').fetchone()[0],2)
+  self.assertEqual(db.execute('SELECT count(*) FROM documents WHERE deleted=0').fetchone()[0],1);db.close()
+ def test_bulk_home_delete_denies_outsiders_and_sent_document(self):
+  doc=self.upload();one=self.draft(doc);two=self.draft(doc)
+  rows=self.f.call('/api/workbench?kind=draft&page_size=200',client=self.a)['items']
+  selected=[{'draft_id':r['id'],'expected_fingerprint':r['delete_token']} for r in rows]
+  self.reject('/api/workbench/delete-drafts',{'items':selected},self.b)
+  self.f.call('/api/requests/send',{'workspace_id':1,'draft_id':one['id'],'fingerprint':one['edit_token'],'recipient_employee':'DEMO-B'},self.a)
+  self.reject('/api/workbench/delete-drafts',{'items':selected},status=409)
+  self.assertEqual(self.f.call('/api/workbench',client=self.a)['counts']['drafts'],1)
+  self.assertEqual(self.f.call('/api/requests?box=sent',client=self.a)['pending'],1)
+ def test_bulk_home_delete_rejects_duplicate_ids(self):
+  d=self.draft(self.upload());row=self.f.call('/api/workbench',client=self.a)['drafts'][0]
+  item={'draft_id':d['id'],'expected_fingerprint':row['delete_token']}
+  self.reject('/api/workbench/delete-drafts',{'items':[item,item]},status=400)
+  self.assertEqual(self.f.call('/api/workbench',client=self.a)['counts']['drafts'],1)
