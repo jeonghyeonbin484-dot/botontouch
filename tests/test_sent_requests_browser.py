@@ -38,7 +38,11 @@ class SentRequestsBrowserTests(unittest.TestCase):
      page.locator('#reload-sent-requests').click();page.wait_for_function("document.querySelector('.sent-card').textContent.includes('미답변 추가 질문')&&document.querySelector('.sent-card').textContent.includes('질문 1건')")
      page.locator('.sent-card').get_by_role('button',name='진행 상황 확인',exact=True).click();page.wait_for_function('requestSelection?.question_count===1')
      self.assertEqual(page.locator('.received-overview .sent-progress li').count(),4)
-     q=page.locator('#journey-request-questions .journey-question').first;q.get_by_label('질문 답변',exact=False).fill('서무 담당자와 월말에 함께 점검합니다.');q.get_by_role('button',name='답변 저장',exact=True).click();page.wait_for_function('requestSelection?.unanswered_count===0')
+     q=page.locator('#journey-request-questions .journey-question').first;q.get_by_label('질문 답변',exact=False).fill('서무 담당자와 월말에 함께 점검합니다.');q.get_by_role('button',name='답변 저장',exact=True).click();
+     try:page.wait_for_function('requestSelection?.unanswered_count===0')
+     except Exception:
+      (output/'answer-refresh-diagnostic.json').write_text(__import__('json').dumps({'ui':page.evaluate('({unanswered:requestSelection?.unanswered_count,revision:requestSelection?.revision,busy:[...state.busy],message:document.getElementById("request-message").textContent})'),'server':{k:v for k,v in f.call('/api/requests/'+str(rid),client=a).items() if k in ('unanswered_count','question_count','revision')}},ensure_ascii=False),encoding='utf-8');raise
+     page.wait_for_function("document.querySelector('.sent-next-action')?.textContent.includes('인수자의 답변 확인')")
      self.assertIn('인수자의 답변 확인',page.locator('.sent-next-action').inner_text())
      row=f.call('/api/requests/'+str(rid),client=b);f.call('/api/requests/answers-reviewed',{'id':rid,'revision':1,'answer_token':row['answer_token']},b);f.call('/api/requests/action',{'id':rid,'revision':1,'action':'accept'},b)
      page.locator('#reload-sent-requests').click();page.wait_for_function("requestSelection?.state==='accepted'")

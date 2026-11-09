@@ -1,4 +1,4 @@
-﻿import json,unittest,io
+import json,unittest,io
 from unittest.mock import patch
 import gemini_engine,ai_diagnostics
 SECTIONS=('담당 업무 개요','주요 업무 및 추진 현황','월별·정기 업무 일정','진행 중인 현안 및 향후 조치사항','협의 부서 및 담당자','후임자 유의사항','전임자 확인이 필요한 사항')

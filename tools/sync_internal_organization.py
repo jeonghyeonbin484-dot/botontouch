@@ -1,7 +1,8 @@
-﻿"""승인된 내부망 서버에서만 실행하는 조직도 외부 동기화 프로그램."""
+"""승인된 내부망 서버에서만 실행하는 조직도 외부 동기화 프로그램."""
 import os,sys,json,secrets,time,urllib.request,urllib.error
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 import org_directory
 from organization_ingest import signature
 

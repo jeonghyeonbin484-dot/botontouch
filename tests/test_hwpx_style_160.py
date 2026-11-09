@@ -1,4 +1,4 @@
-﻿"""문서 스타일의 실제 적용과 템플릿 전체 보존을 검사한다."""
+"""문서 스타일의 실제 적용과 템플릿 전체 보존을 검사한다."""
 import unittest,io,zipfile,copy,xml.etree.ElementTree as E
 import export_hwpx
 H='{http://www.hancom.co.kr/hwpml/2011/head}';P='{http://www.hancom.co.kr/hwpml/2011/paragraph}'

@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import hashlib,json,shutil
 import win32com.client
 root=Path.cwd(); folder=root/'public/media';folder.mkdir(parents=True,exist_ok=True)

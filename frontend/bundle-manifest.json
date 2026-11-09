@@ -1,0 +1,60 @@
+{
+  "application": {
+    "template": "templates/application.html",
+    "styles": [
+      "styles/application.css"
+    ],
+    "bootstrap": [
+      "shared/dom.js",
+      "app/state-and-navigation.js",
+      "shared/http-client.js",
+      "features/workspace/workspace-editor.js",
+      "shared/confirmation-dialog.js",
+      "features/materials/upload-manager.js",
+      "features/handover/draft-editor.js",
+      "features/ai/source-questions.js",
+      "features/handover/task-editor.js",
+      "features/materials/record-actions.js",
+      "app/initialization.js",
+      "features/ai/question-suggestions.js",
+      "features/help/guide-navigation.js",
+      "features/materials/folder-upload.js"
+    ],
+    "scripts": [
+      "features/handover/workflow.js",
+      "features/handover/request-center.js",
+      "features/auth/account-management.js",
+      "features/handover/authoring-journey.js",
+      "features/materials/evidence-viewer.js",
+      "features/materials/source-document-view.js",
+      "features/handover/step-controls.js",
+      "features/chat/chat-controller.js",
+      "features/reports/print-preview.js",
+      "features/auth/user-menu.js",
+      "features/chat/notifications.js",
+      "features/help/video-config.js",
+      "features/help/video-guide.js",
+      "features/ai/conversation-workspace.js",
+      "features/library/library-controller.js",
+      "features/reports/saved-document-preview.js",
+      "features/ai/paragraph-controller.js",
+      "features/help/user-manual.js",
+      "features/dashboard/workbench.js",
+      "features/handover/saved-authoring-state.js",
+      "features/ai/document-editing.js",
+      "features/handover/received-inbox.js",
+      "features/handover/sent-requests.js",
+      "features/chat/messenger-layout.js",
+      "features/library/file-actions.js"
+    ]
+  },
+  "login": {
+    "template": "templates/login.html",
+    "styles": [
+      "features/auth/login.css"
+    ],
+    "scripts": [
+      "features/auth/login.js"
+    ]
+  }
+}

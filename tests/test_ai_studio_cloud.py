@@ -1,4 +1,4 @@
-﻿import unittest,uuid,urllib.error
+import unittest,uuid,urllib.error
 from test_cloud import Fixture
 class StudioCloudTests(unittest.TestCase):
  def setUp(self):self.f=Fixture().start();self.a=self.f.login('demo.a');self.b=self.f.login('demo.b');self.s=self.f.call('/api/studio/sessions',{'title':'가상 대화형 작성'},self.a);self.base='/api/studio/sessions/'+str(self.s['session']['id'])

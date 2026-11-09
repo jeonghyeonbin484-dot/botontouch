@@ -1,4 +1,4 @@
-﻿import unittest,sys,json,sqlite3,tempfile,threading
+import unittest,sys,json,sqlite3,tempfile,threading
 from pathlib import Path
 from unittest.mock import patch
 from contextlib import closing

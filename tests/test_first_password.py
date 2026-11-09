@@ -1,4 +1,4 @@
-﻿import os,secrets,unittest,tempfile,sqlite3
+import os,secrets,unittest,tempfile,sqlite3
 from pathlib import Path
 from contextlib import closing
 from unittest.mock import patch

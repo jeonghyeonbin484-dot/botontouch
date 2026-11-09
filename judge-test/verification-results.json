@@ -1,0 +1,34 @@
+{
+  "files": [
+    {
+      "file": "드론교육_추진현황.xlsx",
+      "bytes": 8302,
+      "sources": 19,
+      "chars": 1519,
+      "sha256": "b3cd9d6f0cbe28e4412d3c1509c6b399349f147dc6cb2a3b8164728e5860d6e6"
+    },
+    {
+      "file": "드론업무_연간계획.pdf",
+      "bytes": 95960,
+      "sources": 1,
+      "chars": 851,
+      "sha256": "3b6bb5e2bfe915c016a6c2e7940ef65ad943637af7e51fca769c5a32c592158b"
+    },
+    {
+      "file": "드론업무_인수인계메모.hwpx",
+      "bytes": 41120,
+      "sources": 35,
+      "chars": 868,
+      "sha256": "1d1aafa76779de65150bd0617b3de08c0832f8916cb013c5e2e920ad9ef97a65"
+    }
+  ],
+  "file_extraction": "PASS",
+  "live_accounts_created": false,
+  "production_changes": false,
+  "login": "BLOCKED_APPROVAL",
+  "gemini": "NOT_CALLED",
+  "send_receive_complete": "BLOCKED_APPROVAL",
+  "reason": "서버 측 심사용 계정 격리 정책 배포와 계정 생성의 사전 승인 필요",
+  "all_files_under_current_upload_limit": true,
+  "project_folder": "C:\\Users\\USER\\Desktop\\업무인수인계 바통터치\\judge-test"
+}

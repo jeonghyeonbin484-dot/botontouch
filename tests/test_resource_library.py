@@ -1,4 +1,4 @@
-﻿import unittest,urllib.error
+import unittest,urllib.error
 from test_cloud import Fixture
 class ResourceLibraryCloudTests(unittest.TestCase):
  def setUp(self):self.f=Fixture().start();self.a=self.f.login('demo.a');self.b=self.f.login('demo.b')

@@ -1,4 +1,4 @@
-﻿import os,json,unittest
+import os,json,unittest
 from unittest.mock import patch
 import ai_draft,material_transmission_policy
 class MaterialPolicyTests(unittest.TestCase):

@@ -4,7 +4,7 @@
   "functions": {
     "api/index.py": {
       "maxDuration": 120,
-      "includeFiles": "{*.py,gemini_verification_fixtures.json,web/**,templates/**}",
+      "includeFiles": "{app.py,backend/**,gemini_verification_fixtures.json,frontend/**,templates/**}",
       "excludeFiles": "public/**"
     }
   },

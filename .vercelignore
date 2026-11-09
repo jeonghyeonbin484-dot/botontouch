@@ -8,3 +8,14 @@ tests/
 .venv/
 
 *.local.md
+
+# 심사용 비밀번호 파일 배포 제외
+judge-test/test-accounts.private.md
+
+*.bundle
+*.patch
+judge-test/
+docs/
+
+**/__pycache__/
+**/*.pyc

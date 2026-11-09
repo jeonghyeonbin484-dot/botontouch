@@ -1,4 +1,4 @@
-﻿import unittest,uuid,time
+import unittest,uuid,time
 from test_cloud import Fixture,PASSWORD
 class CloudNotificationTests(unittest.TestCase):
  def setUp(self):

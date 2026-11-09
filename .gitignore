@@ -11,3 +11,9 @@ artifacts/
 .vercel
 
 *.local.md
+
+# 심사용 계정 비밀번호: 공개 저장소 제외
+/judge-test/test-accounts.private.md
+
+*.pyc
+.pytest_cache/

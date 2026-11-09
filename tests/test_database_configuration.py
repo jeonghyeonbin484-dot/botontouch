@@ -1,4 +1,4 @@
-﻿import unittest,os,io,json
+import unittest,os,io,json
 from unittest.mock import patch
 import cloud_database_config as config,storage_diagnostics,cloud_store
 from test_cloud import Fixture
