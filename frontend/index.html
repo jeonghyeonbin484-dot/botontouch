@@ -373,7 +373,6 @@ $('suggest-questions').onclick=async()=>{if(state.busy.size)return;if(!state.que
 
 // Guide navigation is local-only; it does not save data or request AI.
 document.querySelectorAll('[data-guide-jump]').forEach(button=>button.addEventListener('click',()=>{const section=document.getElementById(button.dataset.guideJump);if(section){section.focus({preventScroll:true});section.scrollIntoView({behavior:'auto',block:'start'});}}));
-
 $('choose-folder').onclick=()=>$('folder-upload').click();$('folder-upload').onchange=()=>{stageFiles($('folder-upload').files);$('folder-upload').value='';};
 
 /* Handover lifecycle, workspace backup and optional account control. */
